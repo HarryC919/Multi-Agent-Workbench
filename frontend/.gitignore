@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+
+# Build
+dist/
+dist-ssr/
+
+# Local env files
+.env*.local
+
+# Editor
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
