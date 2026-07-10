@@ -27,7 +27,7 @@ export interface ModelConfig {
   modelId: string
   vendor: string
   name: string
-  adapterType: 'openai' | 'anthropic' | 'gemini' | 'openai_compatible'
+  adapterType: 'openai' | 'anthropic' | 'gemini' | 'openai_compatible' | 'anthropic_compatible'
   baseUrl?: string
   isActive: boolean
   createdAt: string

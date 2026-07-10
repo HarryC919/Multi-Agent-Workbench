@@ -1,6 +1,7 @@
-from pydantic import BaseModel, Field
-from typing import Literal
 from datetime import datetime
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ChatMessage(BaseModel):
@@ -20,6 +21,7 @@ class ChatRequest(BaseModel):
     effort: float = Field(0.7, ge=0.0, le=1.0)
     files: list[FileContent] = []
     stream: bool = True
+    rag_knowledge_base_id: str | None = None  # reserved for RAG extension
 
 
 class ChatChunk(BaseModel):
@@ -43,8 +45,11 @@ class ConversationOut(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ConversationDetailOut(ConversationOut):
+    messages: list["MessageOut"] = []
 
 
 class MessageOut(BaseModel):
@@ -52,13 +57,12 @@ class MessageOut(BaseModel):
     conversation_id: str
     role: str
     content: str
-    model: str | None
+    model: str | None = None
     effort: float
     status: str
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class UploadedFileOut(BaseModel):
@@ -66,15 +70,20 @@ class UploadedFileOut(BaseModel):
     name: str
     text_content: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
+
+
+class UploadFileResponse(BaseModel):
+    file_id: str
+    name: str
+    text_content: str
 
 
 class ModelConfigCreate(BaseModel):
     model_id: str
     vendor: str
     name: str
-    adapter_type: Literal["openai", "anthropic", "gemini", "openai_compatible"]
+    adapter_type: Literal["openai", "anthropic", "gemini", "openai_compatible", "anthropic_compatible"]
     base_url: str | None = None
     is_active: bool = True
 
@@ -82,7 +91,7 @@ class ModelConfigCreate(BaseModel):
 class ModelConfigUpdate(BaseModel):
     vendor: str | None = None
     name: str | None = None
-    adapter_type: Literal["openai", "anthropic", "gemini", "openai_compatible"] | None = None
+    adapter_type: Literal["openai", "anthropic", "gemini", "openai_compatible", "anthropic_compatible"] | None = None
     base_url: str | None = None
     is_active: bool | None = None
 
@@ -93,10 +102,13 @@ class ModelConfigOut(BaseModel):
     vendor: str
     name: str
     adapter_type: str
-    base_url: str | None
+    base_url: str | None = None
     is_active: bool
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
+
+
+# Resolve forward reference
+ConversationDetailOut.model_rebuild()

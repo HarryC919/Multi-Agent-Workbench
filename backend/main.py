@@ -1,18 +1,29 @@
+import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
-from app.database import engine, Base
+from app.database import engine, Base, AsyncSessionLocal
+from app.logging_config import setup_logging
 from app.models import Conversation, Message, UploadedFile, ModelConfig  # noqa: F401
 from app.routers import chat, conversations, models, skills, upload
+from app.seed import seed_models
+
+setup_logging()
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: create tables
+    # Startup: create tables and seed default data
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+    async with AsyncSessionLocal() as session:
+        await seed_models(session)
+
     yield
     # Shutdown: dispose engine
     await engine.dispose()
@@ -43,3 +54,12 @@ app.include_router(skills.router, prefix="/api")
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.exception("Unhandled exception: %s", exc)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
+    )

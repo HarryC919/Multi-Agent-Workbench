@@ -194,12 +194,15 @@ My_Agent/
    - 处理 SSE `data:` 行解析
    - effort 映射到 `temperature` / `top_p`
    - 对推理类模型按需去掉 temperature（由 `ModelConfig.adapter_type` 或模型特征决定）
-3. 创建 `app/adapters/anthropic_adapter.py`：转换 messages、解析 SSE。
+3. 创建 `app/adapters/anthropic_adapter.py`：
+   - 转换 messages、解析 SSE
+   - 构造函数接受可选 `base_url`，默认 Anthropic 官方地址
+   - 通过传入自定义 `base_url` 即可支持 Anthropic 兼容厂商/私有化部署
 4. 创建 `app/adapters/gemini_adapter.py`：REST SSE 调用。
 5. 创建 `app/adapters/openai_compatible_adapter.py`：
    - 继承 `OpenAIAdapter`，通过传入 `base_url` + `api_key` 支持任意 OpenAI 兼容厂商
    - 实际与 `OpenAIAdapter` 可复用同一类，但构造函数接收动态 `base_url`
-6. 创建 `app/adapters/factory.py`：
+7. 创建 `app/adapters/factory.py`：
    - 查询 `ModelConfig` 表获取模型配置
    - 根据 `adapter_type` 返回对应适配器实例：
      - `openai` → `OpenAIAdapter(settings.openai_api_key, settings.openai_base_url)`
@@ -208,7 +211,7 @@ My_Agent/
      - `openai_compatible` → `OpenAIAdapter(vendor_api_key, vendor_base_url)`
    - `vendor -> (api_key, base_url)` 映射由 `config.py` 维护
    - 若 `ModelConfig` 中 `base_url` 非空，优先使用自定义 base_url
-7. **移除 `models.json` 硬编码文件**，初始清单改为启动 seed 逻辑写入数据库。
+8. **移除 `models.json` 硬编码文件**，初始清单改为启动 seed 逻辑写入数据库。
 
 ### 4.4 文件解析服务
 1. 创建 `app/services/file_parser.py`：
