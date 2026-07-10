@@ -5,7 +5,6 @@ import pytest
 import respx
 
 from app.adapters.anthropic_adapter import AnthropicAdapter
-from app.adapters.factory import get_adapter
 from app.adapters.gemini_adapter import GeminiAdapter
 from app.adapters.openai_adapter import OpenAIAdapter
 
@@ -36,7 +35,9 @@ async def test_openai_adapter_stream():
 
     route.side_effect = stream_response
 
-    adapter = get_adapter("openai", "openai")
+    # Construct the adapter directly: this test exercises stream parsing, not
+    # credential resolution (which get_adapter now validates against .env).
+    adapter = OpenAIAdapter(api_key="test-key", base_url="https://api.openai.com/v1")
     chunks = await collect_chunks(adapter)
 
     contents = [c.content for c in chunks if c.content]
@@ -117,7 +118,9 @@ async def test_openai_adapter_reasoner_no_temperature():
 
     route.side_effect = capture_request
 
-    adapter = get_adapter("openai_compatible", "deepseek")
+    adapter = OpenAIAdapter(
+        api_key="test-key", base_url="https://api.deepseek.com/v1"
+    )
     chunks = []
     async for chunk in adapter.stream_chat(
         messages=[{"role": "user", "content": "Hi"}],

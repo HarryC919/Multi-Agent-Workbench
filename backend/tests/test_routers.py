@@ -28,8 +28,8 @@ async def test_list_models(client):
     response = await client.get("/api/models")
     assert response.status_code == 200
     data = response.json()
-    assert len(data) >= 11  # default seeded models
-    assert any(m["model_id"] == "gpt-5.5" for m in data)
+    assert len(data["models"]) >= 11  # default seeded models
+    assert any(m["model_id"] == "gpt-5.5" for m in data["models"])
 
 
 async def test_create_and_get_conversation(client):

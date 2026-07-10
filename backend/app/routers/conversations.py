@@ -13,10 +13,10 @@ from app.services.conversation_service import ConversationService
 router = APIRouter()
 
 
-@router.get("/conversations", response_model=list[ConversationOut])
+@router.get("/conversations")
 async def list_conversations(q: str | None = None, db: AsyncSession = Depends(get_db)):
     service = ConversationService(db)
-    return await service.list_conversations(search_query=q)
+    return {"conversations": await service.list_conversations(search_query=q)}
 
 
 @router.post("/conversations", response_model=ConversationOut)

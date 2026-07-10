@@ -9,21 +9,21 @@ from app.schemas import ModelConfigCreate, ModelConfigOut, ModelConfigUpdate
 router = APIRouter()
 
 
-@router.get("/models", response_model=list[ModelConfigOut])
+@router.get("/models")
 async def list_active_models(db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(ModelConfig).where(ModelConfig.is_active == True).order_by(ModelConfig.created_at)
     )
-    return result.scalars().all()
+    return {"models": result.scalars().all()}
 
 
-@router.get("/models/all", response_model=list[ModelConfigOut])
+@router.get("/models/all")
 async def list_all_models(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(ModelConfig).order_by(ModelConfig.created_at))
-    return result.scalars().all()
+    return {"models": result.scalars().all()}
 
 
-@router.post("/models", response_model=ModelConfigOut)
+@router.post("/models")
 async def create_model(data: ModelConfigCreate, db: AsyncSession = Depends(get_db)):
     existing = await db.execute(select(ModelConfig).where(ModelConfig.model_id == data.model_id))
     if existing.scalar_one_or_none():
@@ -36,7 +36,7 @@ async def create_model(data: ModelConfigCreate, db: AsyncSession = Depends(get_d
     return model
 
 
-@router.put("/models/{model_id}", response_model=ModelConfigOut)
+@router.put("/models/{model_id}")
 async def update_model(
     model_id: str, data: ModelConfigUpdate, db: AsyncSession = Depends(get_db)
 ):
