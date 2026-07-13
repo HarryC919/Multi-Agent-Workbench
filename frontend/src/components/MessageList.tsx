@@ -11,6 +11,10 @@ export function MessageList({ messages = [] }: MessageListProps) {
   const parentRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
 
+  // Dynamic measurement: assistant messages grow during streaming, so a fixed
+  // estimateSize would mis-position later items and cause visual overlap.
+  // Passing measureElement as a ref makes the virtualizer observe each item's
+  // real height (via ResizeObserver) and re-layout as content grows.
   const virtualizer = useVirtualizer({
     count: messages.length,
     getScrollElement: () => parentRef.current,
@@ -44,6 +48,8 @@ export function MessageList({ messages = [] }: MessageListProps) {
           return (
             <div
               key={message.id}
+              data-index={virtualItem.index}
+              ref={virtualizer.measureElement}
               style={{
                 position: 'absolute',
                 top: 0,

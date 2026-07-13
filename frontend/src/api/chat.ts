@@ -5,6 +5,7 @@ export interface ChatStreamCallbacks {
   onText?: (text: string) => void
   onDone?: (finishReason: string) => void
   onError?: (error: Error) => void
+  onFinally?: () => void
 }
 
 export function sendChatStream(
@@ -12,6 +13,13 @@ export function sendChatStream(
   callbacks: ChatStreamCallbacks,
 ): { abort: () => void } {
   const abortController = new AbortController()
+  let finished = false
+
+  const finalize = () => {
+    if (finished) return
+    finished = true
+    callbacks.onFinally?.()
+  }
 
   const payload: Record<string, unknown> = {
     conversation_id: request.conversationId,
@@ -44,10 +52,17 @@ export function sendChatStream(
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
       let buffer = ''
+      let sawDone = false
 
       const processStream = async (): Promise<void> => {
         const { done, value } = await reader.read()
-        if (done) return
+        if (done) {
+          if (!sawDone) {
+            // Stream closed without an explicit done event; treat as finished.
+            callbacks.onDone?.('stop')
+          }
+          return
+        }
 
         buffer += decoder.decode(value, { stream: true })
         const lines = buffer.split('\n')
@@ -65,8 +80,9 @@ export function sendChatStream(
 
             if (chunk.type === 'text' && chunk.content) {
               callbacks.onText?.(chunk.content)
-            } else if (chunk.type === 'done' && chunk.finishReason) {
-              callbacks.onDone?.(chunk.finishReason)
+            } else if (chunk.type === 'done') {
+              sawDone = true
+              callbacks.onDone?.(chunk.finishReason || 'stop')
             } else if (chunk.type === 'error' && chunk.message) {
               callbacks.onError?.(new Error(chunk.message))
             }
@@ -84,8 +100,13 @@ export function sendChatStream(
       if (error.name === 'AbortError') return
       callbacks.onError?.(error instanceof Error ? error : new Error(String(error)))
     })
+    .finally(finalize)
 
   return {
-    abort: () => abortController.abort(),
+    abort: () => {
+      if (finished) return
+      abortController.abort()
+      finalize()
+    },
   }
 }

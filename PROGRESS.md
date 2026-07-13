@@ -1,6 +1,6 @@
 # 项目进度跟踪
 
-> 最后更新：2026-07-10
+> 最后更新：2026-07-13
 
 ## 一、总体状态
 
@@ -11,8 +11,10 @@
 | 模型列表拉取 | ✅ 可用 | `/api/models` 从 DB 读取 seed 模型 |
 | 多 vendor 适配器（OpenAI/Anthropic/Gemini/兼容） | ✅ 完成 | OpenAI 兼容流式已实测打通（DeepSeek 200） |
 | 单轮对话（流式） | ✅ 可用 | 选有 key 的模型（DeepSeek/Kimi）可正常对话 |
-| 连续对话（多轮） | ⚠️ 有缺陷 | 单次发送后常无法再次发送，见 [问题 1](#问题-1无法连续对话) |
-| 文件上传与发送 | ⚠️ 有缺陷 | 解析器与路由正常，前端字段映射错误，见 [问题 2](#问题-2文件无法发送) |
+| 连续对话（多轮） | ✅ 已修复 | 每轮创建独立 assistant 占位；流结束兜底复位；`abort` 已接到 UI |
+| 文件上传与发送 | ✅ 已修复 | 支持 txt/md/pdf/docx 及常见代码文件；字段映射已修复 |
+| 消息列表渲染（无重叠） | ✅ 已修复 | 虚拟列表加 `measureElement` 动态测高，流式增长不再重叠 |
+| 会话右键菜单 + 删除确认 | ✅ 已修复 | 右键 / ⋯ 按钮双入口；删除前确认弹窗 |
 | 凭证/环境配置 | ✅ 已修复 | 见 [已完成的修复](#三已完成的修复) |
 
 ---
@@ -84,19 +86,98 @@
 
 ---
 
-## 四、下一步待办
+## 四、本次修复记录
+
+### 修复 B：连续对话死锁 & 文件发送字段映射（2026-07-10）
+
+**改动文件**：
+
+- `frontend/src/api/chat.ts`
+  - 新增 `onFinally` 回调，保证流式请求任何退出路径（`onDone` / `onError` / 流自然关闭 / 用户中止）都会触发复位。
+  - 流正常关闭但未收到 `{type:'done'}` 时，自动补发 `onDone('stop')` 兜底。
+- `frontend/src/hooks/useChatStream.ts`
+  - 用 `onFinally` 统一复位 `isStreaming`。
+  - 返回真实 `abort()` 函数，并支持发送新消息前自动中止旧流。
+- `frontend/src/components/InputArea.tsx`
+  - 流式中显示"停止"按钮，调用 `onAbort`。
+- `frontend/src/components/WorkspaceLayout.tsx`
+  - 把 `abort` 从 `useChatStream` 传给 `InputArea`。
+- `frontend/src/api/upload.ts`
+  - 上传响应用 `snakeToCamel` 转换，修复 `fileId` / `textContent` 为 `undefined` 的问题。
+- `frontend/src/hooks/useChatStream.ts`
+  - 过滤掉 `name` 或 `textContent` 为空的附件，避免把坏文件发给后端。
+
+---
+
+## 五、本次修复记录（追加）
+
+### 修复 C：连续对话文本重叠 & 全文本文件支持（2026-07-10）
+
+**改动文件**：
+
+- `frontend/src/hooks/useChatStream.ts`
+  - 发送新消息前自动中止旧的流式请求。
+  - 每轮对话独立创建新的 assistant 占位消息，避免把新回答追加到上一轮已完成的回答里。
+- `frontend/src/store/workspaceStore.ts`
+  - `appendToAssistant` / `setAssistantStatus` 只操作状态为 `streaming` 的最后一条 assistant 消息，防止已结束的消息被误改。
+- `frontend/src/components/InputArea.tsx`
+  - 用 `validator` 替代严格 MIME 类型过滤，支持 `.md` 及各类代码文件上传。
+- `backend/app/services/file_parser.py`
+  - 扩展支持的文本扩展名：`.md`、`.json`、`.yaml`、代码文件（`.py`、`.js`、`.ts` 等）、`.csv`、`.log` 等。
+  - 对未知扩展名增加 UTF-8 文本启发式检测，无扩展名的纯文本文件也能上传。
+- `backend/app/routers/upload.py`
+  - 改为读取文件内容后做启发式检测，兼容无扩展名或扩展名不在白名单的文本文件。
+
+---
+
+## 六、本次修复记录（追加）
+
+### 修复 D：消息列表重叠 + 右键删除会话菜单 + 删除确认弹窗（2026-07-13）
+
+**问题 1：连续对话输出重叠**
+
+- 现象：在已有对话里发新问题，新回答与上一轮内容视觉重叠。
+- 根因：[MessageList.tsx](frontend/src/components/MessageList.tsx) 用 `@tanstack/react-virtual` 虚拟列表时 `estimateSize` 固定返回 80px，而 assistant 流式消息内容会从几行动态增长到几十行，固定估算高度导致后续项 `translateY` 定位落在前一项内容中间 → 重叠。
+- 修复：每个虚拟项根 div 加 `ref={virtualizer.measureElement}` + `data-index`，v3 内部用 ResizeObserver 自动测量真实高度，内容增长时自动重排。`estimateSize: 80` 仅作初始占位。
+
+**问题 2：右键删除会话菜单**
+
+- 需求：右键历史会话出二级菜单含"重命名 / 删除"，与现有 ⋯ 按钮菜单并存。
+- 修复 [ConversationList.tsx](frontend/src/components/ConversationList.tsx)：
+  - 会话项加 `onContextMenu`，右键弹 `position: fixed` 浮层菜单，定位到鼠标位置并做视口边缘 clamp。
+  - 抽出 `renderMenuItems` 供右键菜单和 ⋯ 按钮菜单共用。
+  - 外部点击 / Esc 关闭菜单：用 `target.closest('[data-menu]')` 判断点击是否落在菜单内——**关键**，不能无差别 `mousedown` 关闭，否则 `mousedown` 先于 `click` 触发会卸载菜单项导致 `onClick` 失效（⋯ 菜单的删除/重命名曾因此失效）。
+
+**问题 3：删除确认弹窗**
+
+- 需求：删除会话前加确认防误删。
+- 修复：`confirmDeleteId` 状态 + 居中 modal（取消 / 确认删除），右键菜单和 ⋯ 菜单的删除都走它。
+
+**问题 4：确认弹窗背景不显示（Tailwind v4 配置坑）**
+
+- 现象：遮罩 / 弹窗卡片背景不显示，背后文字透过来。
+- 根因：项目 [index.css](frontend/src/index.css) 用 Tailwind v4 + 自定义 `@theme`，`--color-background` 存的是裸 HSL 值 `0 0% 100%`。`bg-black/40`、`bg-background` 等工具类在这个配置下未正确包成 `hsl(...)`，背景实际透明。
+- 修复：遮罩与弹窗卡片都改用内联样式（`rgba(0,0,0,0.4)` 遮罩 + `rgb(255,255,255)` 卡片），不依赖 Tailwind 调色板，确保背景一定生效。
+
+**验证**：前端 `tsc -b` 干净、`oxlint` 无新问题；后端 29 测试全过。用户实测消息不再重叠，⋯ 菜单和右键菜单均正常，确认弹窗背景清晰。
+
+---
+
+## 七、下一步待办
 
 按优先级排序：
 
-- [ ] **修复问题 2（文件发送）**：`upload.ts` 加 camelCase 转换。改动小、收益直接，建议先做。
-- [ ] **修复问题 1（连续对话）**：`sendChatStream` 加流结束兜底复位 `isStreaming`；把 `abort` 接到 UI。
+- [x] **修复问题 2（文件发送）**：`upload.ts` 加 camelCase 转换。
+- [x] **修复问题 1（连续对话）**：`sendChatStream` 加流结束兜底复位 `isStreaming`；把 `abort` 接到 UI。
+- [x] **修复消息列表重叠**：虚拟列表动态测高。
+- [x] **右键删除会话 + 确认弹窗**。
 - [ ] 端到端验证连续对话 + 文件发送两个场景。
-- [ ] （可选）会话标题自动生成（当前固定"新会话"）。
+- [ ] （可选）会话标题自动生成（当前后端已实现，前端需验证）。
 - [ ] （可选）模型管理 UI（后端 CRUD 已就绪，前端未接）。
 
 ---
 
-## 五、关键技术细节备忘
+## 八、关键技术细节备忘
 
 - 后端启动：`cd backend && uv run uvicorn main:app --reload`（注意入口是顶层 `main.py`，不是 `app.main`）。
 - 前端启动：`cd frontend && npm run dev`（5173，已配 `/api` 代理到 8000）。

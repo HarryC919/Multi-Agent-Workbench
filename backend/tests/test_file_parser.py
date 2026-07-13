@@ -51,7 +51,7 @@ def test_extract_text_from_pdf():
 
 def test_parse_uploaded_file_unsupported():
     with pytest.raises(ValueError, match="Unsupported file type"):
-        parse_uploaded_file("image.png", b"data")
+        parse_uploaded_file("image.png", b"\x89PNG\r\n\x1a\n\x00\x00\x00\x0dIHDR")
 
 
 def test_parse_uploaded_file_txt():

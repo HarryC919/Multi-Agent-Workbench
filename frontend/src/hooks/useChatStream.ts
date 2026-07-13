@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import { nanoid } from 'nanoid'
 import { sendChatStream } from '@/api/chat'
 import { useToastStore } from '@/store/toastStore'
@@ -6,11 +7,12 @@ import type { ChatMessage, FileContent, Message, UploadedFile } from '@/types'
 
 export interface UseChatStreamReturn {
   sendMessage: (content: string, attachedFiles: UploadedFile[]) => void
-  abort: (() => void) | null
+  abort: () => void
 }
 
 export function useChatStream(): UseChatStreamReturn {
   const store = useWorkspaceStore()
+  const abortRef = useRef<(() => void) | null>(null)
 
   const sendMessage = (content: string, attachedFiles: UploadedFile[]) => {
     const conversationId = store.activeId
@@ -19,10 +21,19 @@ export function useChatStream(): UseChatStreamReturn {
     const conversation = store.currentConversation
     if (!conversation) return
 
+    // Reset any previous streaming state before starting a new turn.
+    if (abortRef.current) {
+      abortRef.current()
+      abortRef.current = null
+    }
+    store.setStreaming(false)
+
     const history: ChatMessage[] = conversation.messages.map((m) => ({
       role: m.role,
       content: m.content,
     }))
+
+    const now = new Date().toISOString()
 
     const userMessage: Message = {
       id: nanoid(),
@@ -32,19 +43,32 @@ export function useChatStream(): UseChatStreamReturn {
       model: store.selectedModel,
       effort: store.effort,
       status: 'done',
-      createdAt: new Date().toISOString(),
+      createdAt: now,
+    }
+
+    const assistantPlaceholder: Message = {
+      id: nanoid(),
+      conversationId,
+      role: 'assistant',
+      content: '',
+      model: store.selectedModel,
+      effort: store.effort,
+      status: 'streaming',
+      createdAt: now,
     }
 
     store.addMessage(userMessage)
+    store.addMessage(assistantPlaceholder)
     store.setStreaming(true)
-    store.setAssistantStatus('streaming')
 
-    const files: FileContent[] = attachedFiles.map((f) => ({
-      name: f.name,
-      content: f.textContent,
-    }))
+    const files: FileContent[] = attachedFiles
+      .filter((f) => f.name && f.textContent)
+      .map((f) => ({
+        name: f.name,
+        content: f.textContent,
+      }))
 
-    sendChatStream(
+    const { abort } = sendChatStream(
       {
         conversationId,
         model: store.selectedModel,
@@ -59,23 +83,29 @@ export function useChatStream(): UseChatStreamReturn {
         },
         onDone: () => {
           store.setAssistantStatus('done')
-          store.setStreaming(false)
           store.loadConversations()
         },
         onError: (error) => {
           store.appendToAssistant(`\n\n**Error:** ${error.message}`)
           store.setAssistantStatus('error')
-          store.setStreaming(false)
           useToastStore.getState().addToast(error.message, 'error')
+        },
+        onFinally: () => {
+          store.setStreaming(false)
+          abortRef.current = null
         },
       },
     )
 
-    store.setStreaming(true)
+    abortRef.current = abort
+  }
+
+  const abort = () => {
+    abortRef.current?.()
   }
 
   return {
     sendMessage,
-    abort: null,
+    abort,
   }
 }

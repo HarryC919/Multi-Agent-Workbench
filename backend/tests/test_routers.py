@@ -93,7 +93,7 @@ async def test_upload_docx(client):
 async def test_upload_unsupported(client):
     response = await client.post(
         "/api/upload",
-        files={"file": ("test.png", io.BytesIO(b"data"), "image/png")},
+        files={"file": ("test.png", io.BytesIO(b"\x89PNG\r\n\x1a\n\x00\x00\x00\x0dIHDR"), "image/png")},
     )
     assert response.status_code == 400
 

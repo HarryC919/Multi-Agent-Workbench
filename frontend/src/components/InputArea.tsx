@@ -1,12 +1,31 @@
 import { useCallback, useRef, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
-import { Paperclip, Send, X } from 'lucide-react'
+import { Paperclip, Send, Square, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
 import { uploadFile } from '@/api/upload'
 import { useToastStore } from '@/store/toastStore'
 import { cn } from '@/lib/utils'
 import type { ModelConfig, UploadedFile } from '@/types'
+
+// Keep in sync with backend: app/services/file_parser.py
+const SUPPORTED_EXTENSIONS = new Set([
+  '.txt', '.md', '.markdown',
+  '.json', '.yaml', '.yml', '.xml', '.html', '.htm', '.css', '.scss', '.less',
+  '.js', '.jsx', '.ts', '.tsx', '.py', '.pyw', '.java', '.c', '.cpp', '.cc',
+  '.h', '.hpp', '.go', '.rs', '.rb', '.php', '.swift', '.kt', '.sql', '.sh',
+  '.bash', '.zsh', '.ps1', '.bat', '.cmd', '.csv', '.log', '.ini', '.cfg',
+  '.toml',
+  '.pdf', '.docx',
+])
+
+function isSupportedFile(file: File): boolean {
+  const name = file.name.toLowerCase()
+  for (const ext of SUPPORTED_EXTENSIONS) {
+    if (name.endsWith(ext)) return true
+  }
+  return false
+}
 
 interface InputAreaProps {
   models: ModelConfig[]
@@ -19,6 +38,7 @@ interface InputAreaProps {
   onAttachFile: (file: UploadedFile) => void
   onRemoveFile: (fileId: string) => void
   onSend: (content: string) => void
+  onAbort?: () => void
 }
 
 export function InputArea({
@@ -32,6 +52,7 @@ export function InputArea({
   onAttachFile,
   onRemoveFile,
   onSend,
+  onAbort,
 }: InputAreaProps) {
   const [text, setText] = useState('')
   const [isUploading, setIsUploading] = useState(false)
@@ -64,11 +85,8 @@ export function InputArea({
     onDrop,
     noClick: true,
     noKeyboard: true,
-    accept: {
-      'text/plain': ['.txt'],
-      'text/markdown': ['.md'],
-      'application/pdf': ['.pdf'],
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
+    validator: (file) => {
+      return isSupportedFile(file) ? null : { code: 'file-invalid-type', message: '不支持的文件类型' }
     },
   })
 
@@ -164,10 +182,17 @@ export function InputArea({
           </div>
         </div>
 
-        <Button onClick={handleSend} disabled={!text.trim() || isStreaming} size="sm">
-          <Send className="mr-1 h-4 w-4" />
-          发送
-        </Button>
+        {isStreaming ? (
+          <Button variant="destructive" onClick={onAbort} size="sm">
+            <Square className="mr-1 h-4 w-4" />
+            停止
+          </Button>
+        ) : (
+          <Button onClick={handleSend} disabled={!text.trim()} size="sm">
+            <Send className="mr-1 h-4 w-4" />
+            发送
+          </Button>
+        )}
       </div>
     </div>
   )

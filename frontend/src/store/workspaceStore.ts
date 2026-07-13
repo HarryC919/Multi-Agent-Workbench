@@ -166,7 +166,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           if (!state.currentConversation) return state
           const messages = [...(state.currentConversation.messages || [])]
           const lastMessage = messages[messages.length - 1]
-          if (lastMessage && lastMessage.role === 'assistant') {
+          if (lastMessage && lastMessage.role === 'assistant' && lastMessage.status === 'streaming') {
             lastMessage.content += content
           } else {
             messages.push({
@@ -191,7 +191,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           if (!state.currentConversation) return state
           const messages = [...(state.currentConversation.messages || [])]
           const lastMessage = messages[messages.length - 1]
-          if (lastMessage && lastMessage.role === 'assistant') {
+          if (lastMessage && lastMessage.role === 'assistant' && lastMessage.status === 'streaming') {
             lastMessage.status = status
           }
           return {

@@ -11,7 +11,7 @@ import { ToastContainer } from './ToastContainer'
 
 export function WorkspaceLayout() {
   const store = useWorkspaceStore()
-  const { sendMessage } = useChatStream()
+  const { sendMessage, abort } = useChatStream()
   const {
     conversations,
     activeId,
@@ -71,6 +71,7 @@ export function WorkspaceLayout() {
           onAttachFile={store.attachFile}
           onRemoveFile={store.removeFile}
           onSend={handleSend}
+          onAbort={abort}
         />
       </div>
       <ToastContainer />

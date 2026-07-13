@@ -1,3 +1,4 @@
+import { snakeToCamel } from '@/lib/case'
 import type { UploadFileResponse } from '@/types'
 
 export async function uploadFile(file: File): Promise<UploadFileResponse> {
@@ -14,5 +15,6 @@ export async function uploadFile(file: File): Promise<UploadFileResponse> {
     throw new Error(error.detail || `HTTP ${response.status}`)
   }
 
-  return response.json() as Promise<UploadFileResponse>
+  const data = (await response.json()) as unknown
+  return snakeToCamel<UploadFileResponse>(data)
 }
