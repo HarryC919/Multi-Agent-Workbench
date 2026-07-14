@@ -181,6 +181,7 @@ export function ConversationList({
                       <div
                         data-menu
                         className="absolute right-0 top-6 z-10 w-32 rounded-md border bg-background p-1 shadow-md"
+                        style={{ backgroundColor: 'rgb(255, 255, 255)' }}
                       >
                         {renderMenuItems(conversation)}
                       </div>
@@ -206,7 +207,7 @@ export function ConversationList({
         <div
           data-menu
           className="fixed z-50 w-32 rounded-md border bg-background p-1 shadow-md"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
+          style={{ left: contextMenu.x, top: contextMenu.y, backgroundColor: 'rgb(255, 255, 255)' }}
         >
           {conversations.find((c) => c.id === contextMenu.conversationId) &&
             renderMenuItems(conversations.find((c) => c.id === contextMenu.conversationId)!)}
