@@ -1,6 +1,6 @@
 # 项目进度跟踪
 
-> 最后更新：2026-07-13
+> 最后更新：2026-07-14
 
 ## 一、总体状态
 
@@ -15,6 +15,10 @@
 | 文件上传与发送 | ✅ 已修复 | 支持 txt/md/pdf/docx 及常见代码文件；字段映射已修复 |
 | 消息列表渲染（无重叠） | ✅ 已修复 | 虚拟列表加 `measureElement` 动态测高，流式增长不再重叠 |
 | 会话右键菜单 + 删除确认 | ✅ 已修复 | 右键 / ⋯ 按钮双入口；删除前确认弹窗 |
+| 开始界面直接发送自动建会话 | ✅ 已修复 | 空状态下发送自动 `createConversation` 再发送 |
+| 模型管理 UI（CRUD） | ✅ 已完成 | ChatHeader 入口 → Modal 弹窗，含列表/启停/新增/编辑/删除 |
+| 模型级 API Key | ✅ 已完成 | ModelConfig 加 api_key 字段；compatible 模型可填 key，factory 优先用模型 key 回退 .env；key 不回传明文 |
+| 会话标题自动生成 | ✅ 已实现 | 后端 service 层按首条消息前 50 字生成（已验证） |
 | 凭证/环境配置 | ✅ 已修复 | 见 [已完成的修复](#三已完成的修复) |
 
 ---
@@ -169,7 +173,65 @@
 
 ---
 
-## 七、下一步待办
+## 七、本次修复记录（追加）
+
+### 修复 E：开始界面自动建会话 + 模型管理 UI（2026-07-14）
+
+**问题 1：开始界面发送不自动建会话**
+
+- 现象：进入应用在 EmptyState 界面直接用下方输入框发消息，无反应、不建会话。
+- 根因：[useChatStream.ts:18-19](frontend/src/hooks/useChatStream.ts#L18-L19) `sendMessage` 开头 `if (!conversationId) return`——空状态无 `activeId`，直接返回。而 [WorkspaceLayout.tsx:63](frontend/src/components/WorkspaceLayout.tsx#L63) 的 InputArea 在 `!currentConversation` 时仍渲染，用户能输入但发了没反应。
+- 修复 [WorkspaceLayout.tsx](frontend/src/components/WorkspaceLayout.tsx)：`handleSend` 改为 async，发送前判断 `!activeId || !currentConversation` 则先 `await createConversation()`，再 `sendMessage`。修好后端会话标题自动生成（首条消息前 50 字）随之生效。
+
+**问题 2：模型管理 UI（完整 CRUD）**
+
+- 背景：后端 `/api/models` CRUD、前端 `api/models.ts` 封装、store 的 `addModel/updateModel/removeModel` 全部已就绪，只缺前端组件。UI 库无 Dialog 组件。
+- 新增文件：
+  - [frontend/src/components/ui/modal.tsx](frontend/src/components/ui/modal.tsx)：可复用 Modal，遮罩/卡片用内联 `backgroundColor`（沿用修复 D 的 Tailwind v4 坑规避）。
+  - [frontend/src/components/ModelManager.tsx](frontend/src/components/ModelManager.tsx)：模型管理弹窗。列表（名称/id/vendor/adapterType + 启停切换 + 编辑 + 删除）、新增/编辑表单（model_id/名称/vendor/adapterType 下拉 5 枚举/base_url/启用开关）、删除二次确认。`fetchAllModels` 拉全部（含禁用），操作后同步 store 与重载列表。
+- 改动文件：
+  - [frontend/src/components/ChatHeader.tsx](frontend/src/components/ChatHeader.tsx)：加"模型管理"按钮（Settings2 图标）+ `ModelManager` 弹窗状态。
+
+**验证**：前端 `tsc -b` 干净、`oxlint` 无新问题、`npm run build` 成功；后端 29 测试全过；实测模型 CRUD API（创建/禁用/active 列表排除/删除/数据回归）全链路 200。
+
+---
+
+## 八、本次修复记录（追加）
+
+### 修复 F：模型级 API Key 入口（2026-07-14）
+
+**背景**：模型管理 UI 此前只能配 model_id/vendor/adapter_type/base_url/启用，没有 API key 入口。openai_compatible / anthropic_compatible 类模型接入第三方服务时需要自己的 key + base_url，而 .env 只有 6 个固定 vendor 的 key，新增的 compatible 模型无法调用。
+
+**架构决策**（经确认）：**模型级 key**，而非写回 .env。
+
+- ModelConfig 表加 `api_key` 字段（可空）。
+- factory 解析顺序：模型自带 `api_key` → .env 的 vendor key（向后兼容 6 个固定 vendor）。
+- GET 接口不回传 key 明文，只返回 `has_api_key` 布尔。
+
+**改动文件**：
+
+- 后端
+  - [backend/app/models.py](backend/app/models.py)：ModelConfig 加 `api_key` 字段。
+  - [backend/main.py](backend/main.py)：lifespan 加轻量迁移 `ALTER TABLE model_configs ADD COLUMN api_key`（create_all 不改已有表，try/except 兼容已升级的 DB）。
+  - [backend/app/schemas.py](backend/app/schemas.py)：Create/Update 加 `api_key`；Out 加 `has_api_key`，用 `model_validator(mode="before")` 从 ORM 的 `api_key` 派生且**不泄露明文**。
+  - [backend/app/routers/models.py](backend/app/routers/models.py)：所有端点声明 `response_model=ModelConfigOut` 防泄露；PUT 时 `api_key` 未传=不变、传 null=清空、传字符串=更新。
+  - [backend/app/adapters/factory.py](backend/app/adapters/factory.py)：`get_adapter` 加 `api_key` 参数，优先用模型 key 回退 vendor key；`get_adapter_by_model_id` 传入 `config.api_key`。错误提示补充"或通过模型管理 UI 提供 key"。
+  - [backend/tests/conftest.py](backend/tests/conftest.py)：测试 DB 加同样的 ALTER TABLE 迁移。
+- 前端
+  - [frontend/src/types/index.ts](frontend/src/types/index.ts)：ModelConfig 加 `hasApiKey?`。
+  - [frontend/src/api/models.ts](frontend/src/api/models.ts)：createModel 传 `api_key`；updateModel 用 `ModelUpdatePayload`，**只发送设置的 `apiKey` 字段**（undefined 丢弃，配合后端 exclude_unset 的"不变"语义）。
+  - [frontend/src/components/ModelManager.tsx](frontend/src/components/ModelManager.tsx)：表单加 API Key 输入框（password 类型）。兼容适配器（openai/anthropic compatible）新建时必填 key；编辑时留空=保持不变、输入新值=替换，hint 区分"已配置/未配置"。列表加"已配Key"徽标。
+
+**验证**：
+- 后端 29 测试全过；前端 tsc/oxlint/build 全过。
+- 实测：创建 vendor=openai、adapter=openai_compatible、自带 key+base_url 指向 DeepSeek 的模型，factory 用模型级 key 成功调通 DeepSeek 返回回复。
+- 实测：GET `/api/models/all` 不含 `api_key` 字段，只返回 `has_api_key` 布尔。
+
+**安全说明**：API key 以明文存 SQLite（与 .env 同级别）。GET 接口不回传明文，但本地 DB 文件本身未加密——与 .env 存 key 的风险等级一致。
+
+---
+
+## 九、下一步待办
 
 按优先级排序：
 
@@ -177,14 +239,14 @@
 - [x] **修复问题 1（连续对话）**：`sendChatStream` 加流结束兜底复位 `isStreaming`；把 `abort` 接到 UI。
 - [x] **修复消息列表重叠**：虚拟列表动态测高。
 - [x] **右键删除会话 + 确认弹窗**。
-- [ ] **问题待修复**：在开始界面直接在下面的对话框输入问题发送后不会自动生成新回话
+- [x] **问题待修复**：在开始界面直接在下面的对话框输入问题发送后不会自动生成新会话 → 已修复（`WorkspaceLayout.handleSend` 空状态先 `createConversation`）。
 - [x] **端到端验证连续对话 + 文件发送两个场景**。
-- [x] **会话标题自动生成（当前后端已实现，前端需验证）**。
-- [ ] **模型管理 UI（后端 CRUD 已就绪，前端未接）**。
+- [x] **会话标题自动生成（当前后端已实现，前端需验证）**：已确认后端 `conversation_service.add_message` 按首条消息前 50 字生成标题，修好"开始界面发送"后自动生效。
+- [x] **模型管理 UI（后端 CRUD 已就绪，前端已接）**：ChatHeader "模型管理" 按钮 → Modal 弹窗，列表 + 启停 + 新增/编辑表单 + 删除确认。
 
 ---
 
-## 八、关键技术细节备忘
+## 十、关键技术细节备忘
 
 - 后端启动：`cd backend && uv run uvicorn main:app --reload`（注意入口是顶层 `main.py`，不是 `app.main`）。
 - 前端启动：`cd frontend && npm run dev`（5173，已配 `/api` 代理到 8000）。

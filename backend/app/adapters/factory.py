@@ -21,12 +21,22 @@ _VENDOR_ENV_VAR = {
 }
 
 
-def get_adapter(adapter_type: str, vendor: str, base_url: str | None = None) -> BaseAdapter:
+def get_adapter(
+    adapter_type: str,
+    vendor: str,
+    base_url: str | None = None,
+    api_key: str | None = None,
+) -> BaseAdapter:
     """Synchronous adapter factory.
 
-    Uses config credentials for the given vendor. A custom base_url overrides the
-    vendor default, which is useful for private deployments or OpenAI/Anthropic
-    compatible endpoints.
+    Credentials resolution order for the API key:
+      1. The per-model ``api_key`` argument (stored on ModelConfig) — used for
+         openai_compatible / anthropic_compatible models whose vendor has no
+         .env entry, or to override a vendor's default key.
+      2. The vendor key read from .env via ``settings.vendor_credentials``.
+
+    A custom base_url overrides the vendor default, which is useful for private
+    deployments or OpenAI/Anthropic compatible endpoints.
     """
     if vendor not in settings.vendor_credentials:
         raise ValueError(
@@ -34,22 +44,24 @@ def get_adapter(adapter_type: str, vendor: str, base_url: str | None = None) -> 
             f"{', '.join(sorted(settings.vendor_credentials))}."
         )
 
-    api_key, default_base_url = settings.vendor_credentials[vendor]
-    if not api_key:
+    vendor_api_key, default_base_url = settings.vendor_credentials[vendor]
+    resolved_api_key = (api_key or "").strip() or vendor_api_key
+    if not resolved_api_key:
         env_var = _VENDOR_ENV_VAR.get(vendor, f"{vendor.upper()}_API_KEY")
         raise ValueError(
             f"No API key configured for vendor '{vendor}'. "
-            f"Set {env_var} in backend/.env and restart the server."
+            f"Set {env_var} in backend/.env, or provide a per-model API key "
+            f"via the model management UI."
         )
 
     final_base_url = (base_url or default_base_url).rstrip("/")
 
     if adapter_type == "openai" or adapter_type == "openai_compatible":
-        return OpenAIAdapter(api_key=api_key, base_url=final_base_url)
+        return OpenAIAdapter(api_key=resolved_api_key, base_url=final_base_url)
     elif adapter_type == "anthropic" or adapter_type == "anthropic_compatible":
-        return AnthropicAdapter(api_key=api_key, base_url=final_base_url)
+        return AnthropicAdapter(api_key=resolved_api_key, base_url=final_base_url)
     elif adapter_type == "gemini":
-        return GeminiAdapter(api_key=api_key)
+        return GeminiAdapter(api_key=resolved_api_key)
     else:
         raise ValueError(f"Unsupported adapter_type: {adapter_type}")
 
@@ -68,4 +80,5 @@ async def get_adapter_by_model_id(model_id: str, db: AsyncSession) -> BaseAdapte
         adapter_type=config.adapter_type,
         vendor=config.vendor,
         base_url=config.base_url,
+        api_key=config.api_key,
     )

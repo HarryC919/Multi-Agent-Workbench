@@ -19,6 +19,14 @@ from app.seed import seed_models
 async def setup_database():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Mirror the production migration in main.py: add api_key column to
+        # pre-existing test DBs (create_all won't alter existing tables).
+        try:
+            await conn.exec_driver_sql(
+                "ALTER TABLE model_configs ADD COLUMN api_key VARCHAR(500)"
+            )
+        except Exception:
+            pass
 
     async with AsyncSessionLocal() as session:
         await seed_models(session)

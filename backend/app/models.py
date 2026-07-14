@@ -65,6 +65,10 @@ class ModelConfig(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     adapter_type: Mapped[str] = mapped_column(String(50), nullable=False)  # openai / anthropic / gemini / openai_compatible
     base_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Per-model API key. When set, takes precedence over the vendor key read
+    # from .env. Required for openai_compatible / anthropic_compatible models
+    # whose vendor has no .env entry.
+    api_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(default=now_utc, onupdate=now_utc)

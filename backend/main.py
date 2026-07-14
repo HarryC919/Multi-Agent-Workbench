@@ -20,6 +20,16 @@ async def lifespan(app: FastAPI):
     # Startup: create tables and seed default data
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Lightweight migration: add api_key column to existing model_configs
+        # tables (create_all does not alter existing tables). SQLite supports
+        # ADD COLUMN; the column may already exist on upgraded DBs, so ignore
+        # the duplicate-column error.
+        try:
+            await conn.exec_driver_sql(
+                "ALTER TABLE model_configs ADD COLUMN api_key VARCHAR(500)"
+            )
+        except Exception:
+            pass
 
     async with AsyncSessionLocal() as session:
         await seed_models(session)

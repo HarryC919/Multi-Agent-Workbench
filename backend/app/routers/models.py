@@ -14,16 +14,16 @@ async def list_active_models(db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(ModelConfig).where(ModelConfig.is_active == True).order_by(ModelConfig.created_at)
     )
-    return {"models": result.scalars().all()}
+    return {"models": [ModelConfigOut.model_validate(m) for m in result.scalars().all()]}
 
 
 @router.get("/models/all")
 async def list_all_models(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(ModelConfig).order_by(ModelConfig.created_at))
-    return {"models": result.scalars().all()}
+    return {"models": [ModelConfigOut.model_validate(m) for m in result.scalars().all()]}
 
 
-@router.post("/models")
+@router.post("/models", response_model=ModelConfigOut)
 async def create_model(data: ModelConfigCreate, db: AsyncSession = Depends(get_db)):
     existing = await db.execute(select(ModelConfig).where(ModelConfig.model_id == data.model_id))
     if existing.scalar_one_or_none():
@@ -36,7 +36,7 @@ async def create_model(data: ModelConfigCreate, db: AsyncSession = Depends(get_d
     return model
 
 
-@router.put("/models/{model_id}")
+@router.put("/models/{model_id}", response_model=ModelConfigOut)
 async def update_model(
     model_id: str, data: ModelConfigUpdate, db: AsyncSession = Depends(get_db)
 ):
@@ -45,7 +45,14 @@ async def update_model(
     if not model:
         raise HTTPException(status_code=404, detail="Model not found")
 
-    for field, value in data.model_dump(exclude_unset=True).items():
+    updates = data.model_dump(exclude_unset=True)
+    # api_key semantics on update: unset (excluded) => leave unchanged;
+    # explicit None or "" => clear; non-empty string => set. Since exclude_unset
+    # already drops absent fields, a present None means the client sent null,
+    # which we treat as "clear".
+    for field, value in updates.items():
+        if field == "api_key" and value is None:
+            value = ""
         setattr(model, field, value)
 
     await db.commit()

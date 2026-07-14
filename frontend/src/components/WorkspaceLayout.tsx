@@ -23,10 +23,16 @@ export function WorkspaceLayout() {
     deleteConversation,
   } = useConversation()
 
-  const handleSend = (content: string) => {
+  const handleSend = async (content: string) => {
     if (!store.selectedModel) {
       useToastStore.getState().addToast('请先选择一个模型', 'warning')
       return
+    }
+    // Starting from the empty/landing state: create a conversation first so
+    // the first message lands in a real conversation (and triggers title
+    // auto-generation on the backend).
+    if (!store.activeId || !store.currentConversation) {
+      await createConversation()
     }
     sendMessage(content, store.attachedFiles)
     store.clearInput()

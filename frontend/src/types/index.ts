@@ -37,6 +37,9 @@ export interface ModelConfig {
   name: string
   adapterType: AdapterType
   baseUrl?: string
+  /** Whether a per-model API key is configured. The key itself is never sent
+   *  to the client. */
+  hasApiKey?: boolean
   isActive: boolean
   createdAt: string
   updatedAt: string
