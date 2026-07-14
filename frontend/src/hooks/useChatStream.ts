@@ -6,7 +6,7 @@ import { useWorkspaceStore } from '@/store/workspaceStore'
 import type { ChatMessage, FileContent, Message, UploadedFile } from '@/types'
 
 export interface UseChatStreamReturn {
-  sendMessage: (content: string, attachedFiles: UploadedFile[]) => void
+  sendMessage: (content: string, attachedFiles: UploadedFile[], conversationId?: string) => void
   abort: () => void
 }
 
@@ -14,12 +14,19 @@ export function useChatStream(): UseChatStreamReturn {
   const store = useWorkspaceStore()
   const abortRef = useRef<(() => void) | null>(null)
 
-  const sendMessage = (content: string, attachedFiles: UploadedFile[]) => {
-    const conversationId = store.activeId
-    if (!conversationId) return
+  const sendMessage = (content: string, attachedFiles: UploadedFile[], conversationId?: string) => {
+    // conversationId may be passed explicitly to bypass the stale-closure trap:
+    // when called right after `await createConversation()` inside handleSend,
+    // the `store` captured here still holds the previous (pre-creation) values.
+    const resolvedId = conversationId ?? useWorkspaceStore.getState().activeId
+    if (!resolvedId) return
 
-    const conversation = store.currentConversation
-    if (!conversation) return
+    // Always read the freshest conversation from the store to avoid acting on
+    // a stale snapshot captured at hook-render time. Right after
+    // createConversation(), currentConversation may not yet match resolvedId;
+    // in that case history is empty and the user message below seeds it.
+    const conversation =
+      useWorkspaceStore.getState().currentConversation ?? store.currentConversation
 
     // Reset any previous streaming state before starting a new turn.
     if (abortRef.current) {
@@ -28,16 +35,19 @@ export function useChatStream(): UseChatStreamReturn {
     }
     store.setStreaming(false)
 
-    const history: ChatMessage[] = conversation.messages.map((m) => ({
-      role: m.role,
-      content: m.content,
-    }))
+    const history: ChatMessage[] =
+      conversation && conversation.id === resolvedId
+        ? conversation.messages.map((m) => ({
+            role: m.role,
+            content: m.content,
+          }))
+        : []
 
     const now = new Date().toISOString()
 
     const userMessage: Message = {
       id: nanoid(),
-      conversationId,
+      conversationId: resolvedId,
       role: 'user',
       content,
       model: store.selectedModel,
@@ -48,7 +58,7 @@ export function useChatStream(): UseChatStreamReturn {
 
     const assistantPlaceholder: Message = {
       id: nanoid(),
-      conversationId,
+      conversationId: resolvedId,
       role: 'assistant',
       content: '',
       model: store.selectedModel,
@@ -70,7 +80,7 @@ export function useChatStream(): UseChatStreamReturn {
 
     const { abort } = sendChatStream(
       {
-        conversationId,
+        conversationId: resolvedId,
         model: store.selectedModel,
         messages: [...history, { role: 'user', content }],
         effort: store.effort,

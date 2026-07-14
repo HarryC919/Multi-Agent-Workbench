@@ -14,7 +14,7 @@
 ```bash
 cd backend
 cp .env.example .env
-# 编辑 .env 填入你的 API Key
+# 编辑 .env 填入你的 API Key, DeepSeek, GLM 和 Kimi 请填入 OpenAI 的 BaseURL
 uv sync
 uv run uvicorn main:app --reload
 ```

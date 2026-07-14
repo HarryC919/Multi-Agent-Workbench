@@ -30,11 +30,14 @@ export function WorkspaceLayout() {
     }
     // Starting from the empty/landing state: create a conversation first so
     // the first message lands in a real conversation (and triggers title
-    // auto-generation on the backend).
-    if (!store.activeId || !store.currentConversation) {
-      await createConversation()
+    // auto-generation on the backend). Use the returned id explicitly —
+    // reading store.activeId here would hit a stale-closure value captured at
+    // render time, before the async createConversation resolved.
+    let conversationId = useWorkspaceStore.getState().activeId
+    if (!conversationId) {
+      conversationId = await createConversation()
     }
-    sendMessage(content, store.attachedFiles)
+    sendMessage(content, store.attachedFiles, conversationId ?? undefined)
     store.clearInput()
   }
 
