@@ -21,24 +21,16 @@ class GeminiAdapter(BaseAdapter):
             contents.append({"role": role, "parts": [{"text": msg.get("content", "")}]})
         return contents
 
-    @staticmethod
-    def _map_effort(effort: float) -> tuple[float, float]:
-        temperature = round(0.2 + effort * 0.8, 2)
-        top_p = round(0.7 + effort * 0.3, 2)
-        return temperature, top_p
-
     async def stream_chat(
         self,
         messages: list[dict[str, str]],
         model: str,
-        effort: float,
         thinking: bool = False,
         **kwargs,
     ) -> AsyncIterator[StreamChunk]:
         # Gemini thinking (includeThoughts) is not wired up in this iteration;
         # the toggle is silently ignored for Gemini models.
         contents = self._convert_messages(messages)
-        temperature, top_p = self._map_effort(effort)
 
         url = (
             f"https://generativelanguage.googleapis.com/v1beta/models/{model}"
@@ -46,10 +38,6 @@ class GeminiAdapter(BaseAdapter):
         )
         payload = {
             "contents": contents,
-            "generationConfig": {
-                "temperature": temperature,
-                "topP": top_p,
-            },
         }
 
         async with self.client.stream(

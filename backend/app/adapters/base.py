@@ -20,7 +20,6 @@ class BaseAdapter(ABC):
         self,
         messages: list[dict[str, str]],
         model: str,
-        effort: float,
         thinking: bool = False,
         **kwargs,
     ) -> AsyncIterator[StreamChunk]:

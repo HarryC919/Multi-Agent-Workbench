@@ -47,7 +47,6 @@ async def generate_stream(request: ChatRequest):
             role="user",
             content=request.messages[-1].content if request.messages else "",
             model=request.model,
-            effort=request.effort,
             status="done",
         )
 
@@ -57,7 +56,6 @@ async def generate_stream(request: ChatRequest):
             role="assistant",
             content="",
             model=request.model,
-            effort=request.effort,
             status="streaming",
         )
 
@@ -76,7 +74,7 @@ async def generate_stream(request: ChatRequest):
         full_thinking = ""
         try:
             async for chunk in adapter.stream_chat(
-                messages, request.model, request.effort, thinking=request.thinking
+                messages, request.model, thinking=request.thinking
             ):
                 if chunk.thinking:
                     full_thinking += chunk.thinking

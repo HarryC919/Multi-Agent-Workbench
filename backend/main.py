@@ -42,6 +42,15 @@ async def lifespan(app: FastAPI):
         except Exception:
             pass
 
+        # Lightweight migration: drop the effort column from messages. The
+        # effort (思考强度) feature was removed — models should use their own
+        # default temperature/top_p. SQLite >= 3.35 supports DROP COLUMN;
+        # ignore the no-such-column error on already-migrated DBs.
+        try:
+            await conn.exec_driver_sql("ALTER TABLE messages DROP COLUMN effort")
+        except Exception:
+            pass
+
     async with AsyncSessionLocal() as session:
         await seed_models(session)
 

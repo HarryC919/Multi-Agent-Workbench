@@ -61,7 +61,6 @@ async def test_add_message_and_auto_title(service):
         role="user",
         content="Tell me about FastAPI design patterns",
         model="gpt-5.5",
-        effort=0.7,
     )
 
     assert msg.role == "user"

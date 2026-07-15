@@ -15,10 +15,6 @@ class AnthropicAdapter(BaseAdapter):
         self.client = httpx.AsyncClient(timeout=120.0)
 
     @staticmethod
-    def _map_effort(effort: float) -> float:
-        return round(0.2 + effort * 0.8, 2)
-
-    @staticmethod
     def _convert_messages(messages: list[dict[str, str]]) -> tuple[str, list[dict[str, str]]]:
         """Extract system message(s) and keep only user/assistant roles."""
         system_parts = []
@@ -34,7 +30,6 @@ class AnthropicAdapter(BaseAdapter):
         self,
         messages: list[dict[str, str]],
         model: str,
-        effort: float,
         thinking: bool = False,
         **kwargs,
     ) -> AsyncIterator[StreamChunk]:
@@ -43,17 +38,15 @@ class AnthropicAdapter(BaseAdapter):
             "model": model,
             "messages": msgs,
             "max_tokens": 4096,
-            "temperature": self._map_effort(effort),
             "stream": True,
         }
         if system:
             payload["system"] = system
 
-        # Extended thinking: Anthropic requires temperature to be unset and
-        # max_tokens to exceed the thinking budget. When enabled, override
-        # both and add the thinking config.
+        # Extended thinking: Anthropic requires max_tokens to exceed the
+        # thinking budget. When enabled, raise max_tokens and add the thinking
+        # config.
         if thinking:
-            payload.pop("temperature", None)
             payload["max_tokens"] = 8192
             payload["thinking"] = {"type": "enabled", "budget_tokens": 4096}
 

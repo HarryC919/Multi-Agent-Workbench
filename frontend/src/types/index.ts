@@ -16,7 +16,6 @@ export interface Message {
   content: string
   thinking?: string
   model?: string
-  effort: number
   status: MessageStatus
   createdAt: string
 }
@@ -60,7 +59,6 @@ export interface ChatRequest {
   conversationId?: string
   model: string
   messages: ChatMessage[]
-  effort: number
   files: FileContent[]
   stream: boolean
   thinking?: boolean

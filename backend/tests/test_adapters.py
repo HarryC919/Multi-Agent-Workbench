@@ -14,7 +14,6 @@ async def collect_chunks(adapter):
     async for chunk in adapter.stream_chat(
         messages=[{"role": "user", "content": "Hi"}],
         model="gpt-test",
-        effort=0.5,
     ):
         chunks.append(chunk)
     return chunks
@@ -93,7 +92,6 @@ async def test_gemini_adapter_stream():
     async for chunk in adapter.stream_chat(
         messages=[{"role": "user", "content": "Hi"}],
         model="gemini-test",
-        effort=0.5,
     ):
         chunks.append(chunk)
 
@@ -102,7 +100,8 @@ async def test_gemini_adapter_stream():
 
 
 @respx.mock
-async def test_openai_adapter_reasoner_no_temperature():
+async def test_openai_adapter_no_temperature():
+    """The adapter must not send temperature/top_p so models use their defaults."""
     route = respx.post("https://api.deepseek.com/v1/chat/completions")
     captured: dict = {}
 
@@ -125,7 +124,6 @@ async def test_openai_adapter_reasoner_no_temperature():
     async for chunk in adapter.stream_chat(
         messages=[{"role": "user", "content": "Hi"}],
         model="deepseek-reasoner",
-        effort=0.5,
     ):
         chunks.append(chunk)
 

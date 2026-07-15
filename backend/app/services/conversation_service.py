@@ -69,7 +69,6 @@ class ConversationService:
         role: str,
         content: str,
         model: str | None = None,
-        effort: float = 0.7,
         status: str = "done",
         thinking: str = "",
     ) -> Message:
@@ -79,7 +78,6 @@ class ConversationService:
             content=content,
             thinking=thinking,
             model=model,
-            effort=effort,
             status=status,
             created_at=now_utc(),
         )

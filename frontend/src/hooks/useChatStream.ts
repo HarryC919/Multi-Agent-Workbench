@@ -51,7 +51,6 @@ export function useChatStream(): UseChatStreamReturn {
       role: 'user',
       content,
       model: store.selectedModel,
-      effort: store.effort,
       status: 'done',
       createdAt: now,
     }
@@ -62,7 +61,6 @@ export function useChatStream(): UseChatStreamReturn {
       role: 'assistant',
       content: '',
       model: store.selectedModel,
-      effort: store.effort,
       status: 'streaming',
       createdAt: now,
     }
@@ -83,7 +81,6 @@ export function useChatStream(): UseChatStreamReturn {
         conversationId: resolvedId,
         model: store.selectedModel,
         messages: [...history, { role: 'user', content }],
-        effort: store.effort,
         files,
         stream: true,
         thinking: store.thinkingEnabled,

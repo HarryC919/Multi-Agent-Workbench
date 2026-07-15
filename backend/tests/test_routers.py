@@ -111,7 +111,6 @@ async def test_chat_stream_creates_conversation(client):
             json={
                 "model": "gpt-5.5",
                 "messages": [{"role": "user", "content": "Hello"}],
-                "effort": 0.7,
             },
         )
         assert response.status_code == 200

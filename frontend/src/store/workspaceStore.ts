@@ -20,7 +20,6 @@ interface WorkspaceState {
   inputText: string
   attachedFiles: UploadedFile[]
   selectedModel: string
-  effort: number
   thinkingEnabled: boolean
 
   // Streaming state
@@ -39,7 +38,6 @@ interface WorkspaceState {
   deleteConversation: (id: string) => Promise<void>
   setInputText: (text: string) => void
   setSelectedModel: (model: string) => void
-  setEffort: (value: number) => void
   setThinkingEnabled: (value: boolean) => void
   attachFile: (file: UploadedFile) => void
   removeFile: (fileId: string) => void
@@ -66,7 +64,6 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       inputText: '',
       attachedFiles: [],
       selectedModel: '',
-      effort: 0.7,
       thinkingEnabled: false,
 
       isStreaming: false,
@@ -141,8 +138,6 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 
       setSelectedModel: (model) => set({ selectedModel: model }),
 
-      setEffort: (value) => set({ effort: value }),
-
       setThinkingEnabled: (value) => set({ thinkingEnabled: value }),
 
       attachFile: (file) =>
@@ -181,7 +176,6 @@ export const useWorkspaceStore = create<WorkspaceState>()(
               role: 'assistant',
               content,
               model: state.selectedModel,
-              effort: state.effort,
               status: 'streaming',
               createdAt: new Date().toISOString(),
             })
@@ -207,7 +201,6 @@ export const useWorkspaceStore = create<WorkspaceState>()(
               content: '',
               thinking,
               model: state.selectedModel,
-              effort: state.effort,
               status: 'streaming',
               createdAt: new Date().toISOString(),
             })
@@ -265,10 +258,9 @@ export const useWorkspaceStore = create<WorkspaceState>()(
     }),
     {
       name: 'chat-workbench-storage',
-      version: 2,
+      version: 3,
       partialize: (state) => ({
         selectedModel: state.selectedModel,
-        effort: state.effort,
         thinkingEnabled: state.thinkingEnabled,
       }),
       skipHydration: true,
@@ -278,7 +270,6 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         return {
           ...currentState,
           selectedModel: persisted.selectedModel ?? currentState.selectedModel,
-          effort: persisted.effort ?? currentState.effort,
           thinkingEnabled: persisted.thinkingEnabled ?? currentState.thinkingEnabled,
         }
       },

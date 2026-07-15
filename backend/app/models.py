@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import String, Text, Float, Boolean, ForeignKey
+from sqlalchemy import String, Text, Boolean, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -36,7 +36,6 @@ class Message(Base):
     content: Mapped[str] = mapped_column(Text, default="")
     thinking: Mapped[str] = mapped_column(Text, default="")  # reasoning / chain-of-thought content
     model: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    effort: Mapped[float] = mapped_column(Float, default=0.7)
     status: Mapped[str] = mapped_column(String(20), default="done")  # pending / streaming / done / error
     created_at: Mapped[datetime] = mapped_column(default=now_utc)
 

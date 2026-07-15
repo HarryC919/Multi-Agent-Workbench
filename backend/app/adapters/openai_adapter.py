@@ -14,20 +14,10 @@ class OpenAIAdapter(BaseAdapter):
         self.base_url = base_url.rstrip("/")
         self.client = httpx.AsyncClient(timeout=120.0)
 
-    def _map_effort_to_params(self, effort: float, model: str) -> dict:
-        """Map effort (0-1) to temperature/top_p. Reasoning models drop both."""
-        if "o1" in model or "o3" in model or "reasoner" in model.lower():
-            return {}
-
-        temperature = round(0.2 + effort * 0.8, 2)
-        top_p = round(0.7 + effort * 0.3, 2)
-        return {"temperature": temperature, "top_p": top_p}
-
     async def stream_chat(
         self,
         messages: list[dict[str, str]],
         model: str,
-        effort: float,
         thinking: bool = False,
         **kwargs,
     ) -> AsyncIterator[StreamChunk]:
@@ -35,7 +25,6 @@ class OpenAIAdapter(BaseAdapter):
             "model": model,
             "messages": messages,
             "stream": True,
-            **self._map_effort_to_params(effort, model),
         }
 
         async with self.client.stream(

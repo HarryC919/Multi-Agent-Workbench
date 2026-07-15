@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, model_validator
 
 
 class ChatMessage(BaseModel):
@@ -18,7 +18,6 @@ class ChatRequest(BaseModel):
     conversation_id: str | None = None
     model: str
     messages: list[ChatMessage]
-    effort: float = Field(0.7, ge=0.0, le=1.0)
     files: list[FileContent] = []
     stream: bool = True
     thinking: bool = False  # enable chain-of-thought / reasoning output
@@ -60,7 +59,6 @@ class MessageOut(BaseModel):
     content: str
     thinking: str = ""
     model: str | None = None
-    effort: float
     status: str
     created_at: datetime
 

@@ -26,7 +26,6 @@ export function sendChatStream(
     conversation_id: request.conversationId,
     model: request.model,
     messages: request.messages,
-    effort: request.effort,
     files: request.files,
     stream: true,
     thinking: request.thinking ?? false,

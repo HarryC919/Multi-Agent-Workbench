@@ -37,6 +37,13 @@ async def setup_database():
         except Exception:
             pass
 
+        # Mirror the production migration in main.py: drop the effort column
+        # (思考强度 feature removed).
+        try:
+            await conn.exec_driver_sql("ALTER TABLE messages DROP COLUMN effort")
+        except Exception:
+            pass
+
     async with AsyncSessionLocal() as session:
         await seed_models(session)
 

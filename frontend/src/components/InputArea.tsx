@@ -2,7 +2,6 @@ import { useCallback, useRef, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { Paperclip, Send, Square, X, Brain } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Slider } from '@/components/ui/slider'
 import { uploadFile } from '@/api/upload'
 import { useToastStore } from '@/store/toastStore'
 import { cn } from '@/lib/utils'
@@ -30,12 +29,10 @@ function isSupportedFile(file: File): boolean {
 interface InputAreaProps {
   models: ModelConfig[]
   selectedModel: string
-  effort: number
   thinkingEnabled: boolean
   attachedFiles: UploadedFile[]
   isStreaming: boolean
   onModelChange: (modelId: string) => void
-  onEffortChange: (value: number) => void
   onThinkingToggle: (value: boolean) => void
   onAttachFile: (file: UploadedFile) => void
   onRemoveFile: (fileId: string) => void
@@ -46,12 +43,10 @@ interface InputAreaProps {
 export function InputArea({
   models = [],
   selectedModel,
-  effort,
   thinkingEnabled,
   attachedFiles,
   isStreaming,
   onModelChange,
-  onEffortChange,
   onThinkingToggle,
   onAttachFile,
   onRemoveFile,
@@ -171,19 +166,6 @@ export function InputArea({
               </option>
             ))}
           </select>
-
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">思考强度</span>
-            <Slider
-              value={effort}
-              min={0}
-              max={1}
-              step={0.1}
-              onChange={onEffortChange}
-              className="w-24"
-            />
-            <span className="w-8 text-xs tabular-nums">{effort.toFixed(1)}</span>
-          </div>
 
           <button
             type="button"
