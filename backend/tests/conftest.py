@@ -28,6 +28,15 @@ async def setup_database():
         except Exception:
             pass
 
+        # Mirror the production migration in main.py: add thinking column to
+        # pre-existing messages tables (chain-of-thought persistence).
+        try:
+            await conn.exec_driver_sql(
+                "ALTER TABLE messages ADD COLUMN thinking TEXT DEFAULT ''"
+            )
+        except Exception:
+            pass
+
     async with AsyncSessionLocal() as session:
         await seed_models(session)
 

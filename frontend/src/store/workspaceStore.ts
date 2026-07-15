@@ -21,6 +21,7 @@ interface WorkspaceState {
   attachedFiles: UploadedFile[]
   selectedModel: string
   effort: number
+  thinkingEnabled: boolean
 
   // Streaming state
   isStreaming: boolean
@@ -39,11 +40,13 @@ interface WorkspaceState {
   setInputText: (text: string) => void
   setSelectedModel: (model: string) => void
   setEffort: (value: number) => void
+  setThinkingEnabled: (value: boolean) => void
   attachFile: (file: UploadedFile) => void
   removeFile: (fileId: string) => void
   clearInput: () => void
   addMessage: (message: Message) => void
   appendToAssistant: (content: string) => void
+  appendToAssistantThinking: (thinking: string) => void
   setAssistantStatus: (status: Message['status']) => void
   setStreaming: (streaming: boolean) => void
   loadModels: () => Promise<void>
@@ -64,6 +67,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       attachedFiles: [],
       selectedModel: '',
       effort: 0.7,
+      thinkingEnabled: false,
 
       isStreaming: false,
 
@@ -139,6 +143,8 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 
       setEffort: (value) => set({ effort: value }),
 
+      setThinkingEnabled: (value) => set({ thinkingEnabled: value }),
+
       attachFile: (file) =>
         set((state) => ({ attachedFiles: [...state.attachedFiles, file] })),
 
@@ -174,6 +180,32 @@ export const useWorkspaceStore = create<WorkspaceState>()(
               conversationId: state.currentConversation.id,
               role: 'assistant',
               content,
+              model: state.selectedModel,
+              effort: state.effort,
+              status: 'streaming',
+              createdAt: new Date().toISOString(),
+            })
+          }
+          return {
+            currentConversation: { ...state.currentConversation, messages },
+          }
+        })
+      },
+
+      appendToAssistantThinking: (thinking) => {
+        set((state) => {
+          if (!state.currentConversation) return state
+          const messages = [...(state.currentConversation.messages || [])]
+          const lastMessage = messages[messages.length - 1]
+          if (lastMessage && lastMessage.role === 'assistant' && lastMessage.status === 'streaming') {
+            lastMessage.thinking = (lastMessage.thinking || '') + thinking
+          } else {
+            messages.push({
+              id: nanoid(),
+              conversationId: state.currentConversation.id,
+              role: 'assistant',
+              content: '',
+              thinking,
               model: state.selectedModel,
               effort: state.effort,
               status: 'streaming',
@@ -233,10 +265,11 @@ export const useWorkspaceStore = create<WorkspaceState>()(
     }),
     {
       name: 'chat-workbench-storage',
-      version: 1,
+      version: 2,
       partialize: (state) => ({
         selectedModel: state.selectedModel,
         effort: state.effort,
+        thinkingEnabled: state.thinkingEnabled,
       }),
       skipHydration: true,
       merge: (persistedState, currentState) => {
@@ -246,6 +279,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           ...currentState,
           selectedModel: persisted.selectedModel ?? currentState.selectedModel,
           effort: persisted.effort ?? currentState.effort,
+          thinkingEnabled: persisted.thinkingEnabled ?? currentState.thinkingEnabled,
         }
       },
     },

@@ -3,6 +3,7 @@ import type { ChatChunk, ChatRequest } from '@/types'
 export interface ChatStreamCallbacks {
   onChunk?: (chunk: ChatChunk) => void
   onText?: (text: string) => void
+  onThinking?: (text: string) => void
   onDone?: (finishReason: string) => void
   onError?: (error: Error) => void
   onFinally?: () => void
@@ -28,6 +29,7 @@ export function sendChatStream(
     effort: request.effort,
     files: request.files,
     stream: true,
+    thinking: request.thinking ?? false,
     rag_knowledge_base_id: request.ragKnowledgeBaseId,
   }
 
@@ -80,6 +82,8 @@ export function sendChatStream(
 
             if (chunk.type === 'text' && chunk.content) {
               callbacks.onText?.(chunk.content)
+            } else if (chunk.type === 'thinking' && chunk.content) {
+              callbacks.onThinking?.(chunk.content)
             } else if (chunk.type === 'done') {
               sawDone = true
               callbacks.onDone?.(chunk.finishReason || 'stop')

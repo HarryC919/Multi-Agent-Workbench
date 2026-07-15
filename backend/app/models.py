@@ -34,6 +34,7 @@ class Message(Base):
     conversation_id: Mapped[str] = mapped_column(String(36), ForeignKey("conversations.id", ondelete="CASCADE"))
     role: Mapped[str] = mapped_column(String(20))  # system / user / assistant
     content: Mapped[str] = mapped_column(Text, default="")
+    thinking: Mapped[str] = mapped_column(Text, default="")  # reasoning / chain-of-thought content
     model: Mapped[str | None] = mapped_column(String(100), nullable=True)
     effort: Mapped[float] = mapped_column(Float, default=0.7)
     status: Mapped[str] = mapped_column(String(20), default="done")  # pending / streaming / done / error

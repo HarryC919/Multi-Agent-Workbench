@@ -31,6 +31,17 @@ async def lifespan(app: FastAPI):
         except Exception:
             pass
 
+        # Lightweight migration: add thinking column to existing messages
+        # tables for persisting chain-of-thought / reasoning content. SQLite
+        # supports ADD COLUMN; the column may already exist on upgraded DBs,
+        # so ignore the duplicate-column error.
+        try:
+            await conn.exec_driver_sql(
+                "ALTER TABLE messages ADD COLUMN thinking TEXT DEFAULT ''"
+            )
+        except Exception:
+            pass
+
     async with AsyncSessionLocal() as session:
         await seed_models(session)
 

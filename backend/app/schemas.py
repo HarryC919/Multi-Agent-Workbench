@@ -21,11 +21,12 @@ class ChatRequest(BaseModel):
     effort: float = Field(0.7, ge=0.0, le=1.0)
     files: list[FileContent] = []
     stream: bool = True
+    thinking: bool = False  # enable chain-of-thought / reasoning output
     rag_knowledge_base_id: str | None = None  # reserved for RAG extension
 
 
 class ChatChunk(BaseModel):
-    type: Literal["text", "done", "error"]
+    type: Literal["text", "thinking", "done", "error"]
     content: str | None = None
     finish_reason: str | None = None
     message: str | None = None
@@ -57,6 +58,7 @@ class MessageOut(BaseModel):
     conversation_id: str
     role: str
     content: str
+    thinking: str = ""
     model: str | None = None
     effort: float
     status: str

@@ -14,6 +14,7 @@ export interface Message {
   conversationId: string
   role: MessageRole
   content: string
+  thinking?: string
   model?: string
   effort: number
   status: MessageStatus
@@ -62,11 +63,12 @@ export interface ChatRequest {
   effort: number
   files: FileContent[]
   stream: boolean
+  thinking?: boolean
   ragKnowledgeBaseId?: string
 }
 
 export interface ChatChunk {
-  type: 'text' | 'done' | 'error'
+  type: 'text' | 'thinking' | 'done' | 'error'
   content?: string
   finishReason?: string
   message?: string

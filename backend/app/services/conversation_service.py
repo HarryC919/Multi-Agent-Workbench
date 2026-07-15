@@ -71,11 +71,13 @@ class ConversationService:
         model: str | None = None,
         effort: float = 0.7,
         status: str = "done",
+        thinking: str = "",
     ) -> Message:
         message = Message(
             conversation_id=conversation_id,
             role=role,
             content=content,
+            thinking=thinking,
             model=model,
             effort=effort,
             status=status,
@@ -103,6 +105,7 @@ class ConversationService:
         message_id: str,
         content: str,
         status: str | None = None,
+        thinking: str | None = None,
     ) -> Message | None:
         result = await self.db.execute(select(Message).where(Message.id == message_id))
         message = result.scalar_one_or_none()
@@ -110,6 +113,8 @@ class ConversationService:
             return None
 
         message.content = content
+        if thinking is not None:
+            message.thinking = thinking
         if status:
             message.status = status
 

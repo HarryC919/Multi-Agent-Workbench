@@ -86,10 +86,14 @@ export function useChatStream(): UseChatStreamReturn {
         effort: store.effort,
         files,
         stream: true,
+        thinking: store.thinkingEnabled,
       },
       {
         onText: (text) => {
           store.appendToAssistant(text)
+        },
+        onThinking: (text) => {
+          store.appendToAssistantThinking(text)
         },
         onDone: () => {
           store.setAssistantStatus('done')

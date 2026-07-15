@@ -2,6 +2,7 @@ import ReactMarkdown from 'react-markdown'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import remarkGfm from 'remark-gfm'
 import { cn } from '@/lib/utils'
+import { ThinkingBlock } from './ThinkingBlock'
 import type { Message } from '@/types'
 
 interface MessageItemProps {
@@ -22,7 +23,15 @@ export function MessageItem({ message }: MessageItemProps) {
         {isUser ? (
           <div className="whitespace-pre-wrap">{message.content}</div>
         ) : (
-          <div className="prose prose-sm dark:prose-invert max-w-none">
+          <>
+            {message.thinking && (
+              <ThinkingBlock
+                thinking={message.thinking}
+                isStreaming={message.status === 'streaming'}
+                bodyStarted={!!message.content}
+              />
+            )}
+            <div className="prose prose-sm dark:prose-invert max-w-none">
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               disallowedElements={['script', 'iframe', 'form']}
@@ -56,7 +65,8 @@ export function MessageItem({ message }: MessageItemProps) {
             >
               {message.content}
             </ReactMarkdown>
-          </div>
+            </div>
+          </>
         )}
         {message.status === 'streaming' && (
           <span className="ml-1 inline-block h-2 w-2 animate-pulse rounded-full bg-current opacity-50" />

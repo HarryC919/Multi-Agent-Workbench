@@ -35,6 +35,7 @@ class AnthropicAdapter(BaseAdapter):
         messages: list[dict[str, str]],
         model: str,
         effort: float,
+        thinking: bool = False,
         **kwargs,
     ) -> AsyncIterator[StreamChunk]:
         system, msgs = self._convert_messages(messages)
@@ -47,6 +48,14 @@ class AnthropicAdapter(BaseAdapter):
         }
         if system:
             payload["system"] = system
+
+        # Extended thinking: Anthropic requires temperature to be unset and
+        # max_tokens to exceed the thinking budget. When enabled, override
+        # both and add the thinking config.
+        if thinking:
+            payload.pop("temperature", None)
+            payload["max_tokens"] = 8192
+            payload["thinking"] = {"type": "enabled", "budget_tokens": 4096}
 
         headers = {
             "x-api-key": self.api_key,
@@ -75,9 +84,15 @@ class AnthropicAdapter(BaseAdapter):
                 event_type = data.get("type")
                 if event_type == "content_block_delta":
                     delta = data.get("delta", {})
-                    text = delta.get("text", "")
-                    if text:
-                        yield StreamChunk(content=text)
+                    # Distinguish thinking deltas from text deltas.
+                    if delta.get("type") == "thinking_delta":
+                        thought = delta.get("thinking", "")
+                        if thought:
+                            yield StreamChunk(thinking=thought)
+                    else:
+                        text = delta.get("text", "")
+                        if text:
+                            yield StreamChunk(content=text)
                 elif event_type == "message_stop":
                     yield StreamChunk(content="", finish_reason="stop")
                 elif event_type == "error":

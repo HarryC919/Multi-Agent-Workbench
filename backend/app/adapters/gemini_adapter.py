@@ -32,8 +32,11 @@ class GeminiAdapter(BaseAdapter):
         messages: list[dict[str, str]],
         model: str,
         effort: float,
+        thinking: bool = False,
         **kwargs,
     ) -> AsyncIterator[StreamChunk]:
+        # Gemini thinking (includeThoughts) is not wired up in this iteration;
+        # the toggle is silently ignored for Gemini models.
         contents = self._convert_messages(messages)
         temperature, top_p = self._map_effort(effort)
 

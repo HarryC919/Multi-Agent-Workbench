@@ -28,6 +28,7 @@ class OpenAIAdapter(BaseAdapter):
         messages: list[dict[str, str]],
         model: str,
         effort: float,
+        thinking: bool = False,
         **kwargs,
     ) -> AsyncIterator[StreamChunk]:
         params = {
@@ -67,8 +68,13 @@ class OpenAIAdapter(BaseAdapter):
                 choice = choices[0]
                 delta = choice.get("delta", {})
                 content = delta.get("content") or ""
+                # OpenAI-compatible reasoning models (DeepSeek reasoner, GLM z1,
+                # Kimi K1.5, etc.) expose chain-of-thought via reasoning_content.
+                reasoning = delta.get("reasoning_content") or ""
                 finish_reason = choice.get("finish_reason")
 
+                if reasoning and thinking:
+                    yield StreamChunk(thinking=reasoning)
                 if content:
                     yield StreamChunk(content=content)
                 if finish_reason:

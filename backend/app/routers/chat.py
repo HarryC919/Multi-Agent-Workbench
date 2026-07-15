@@ -73,8 +73,14 @@ async def generate_stream(request: ChatRequest):
             return
 
         full_content = ""
+        full_thinking = ""
         try:
-            async for chunk in adapter.stream_chat(messages, request.model, request.effort):
+            async for chunk in adapter.stream_chat(
+                messages, request.model, request.effort, thinking=request.thinking
+            ):
+                if chunk.thinking:
+                    full_thinking += chunk.thinking
+                    yield f"data: {json.dumps({'type': 'thinking', 'content': chunk.thinking})}\n\n"
                 if chunk.content:
                     full_content += chunk.content
                     yield f"data: {json.dumps({'type': 'text', 'content': chunk.content})}\n\n"
@@ -82,11 +88,15 @@ async def generate_stream(request: ChatRequest):
                     yield f"data: {json.dumps({'type': 'done', 'finish_reason': chunk.finish_reason})}\n\n"
         except Exception as exc:
             yield f"data: {json.dumps({'type': 'error', 'message': str(exc)})}\n\n"
-            await service.update_message_content(assistant_msg.id, str(exc), status="error")
+            await service.update_message_content(
+                assistant_msg.id, str(exc), status="error"
+            )
             return
 
-        # Save final assistant message
-        await service.update_message_content(assistant_msg.id, full_content, status="done")
+        # Save final assistant message (content + persisted thinking)
+        await service.update_message_content(
+            assistant_msg.id, full_content, status="done", thinking=full_thinking
+        )
 
 
 @router.post("/chat")

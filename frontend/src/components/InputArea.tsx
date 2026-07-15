@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
-import { Paperclip, Send, Square, X } from 'lucide-react'
+import { Paperclip, Send, Square, X, Brain } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
 import { uploadFile } from '@/api/upload'
@@ -31,10 +31,12 @@ interface InputAreaProps {
   models: ModelConfig[]
   selectedModel: string
   effort: number
+  thinkingEnabled: boolean
   attachedFiles: UploadedFile[]
   isStreaming: boolean
   onModelChange: (modelId: string) => void
   onEffortChange: (value: number) => void
+  onThinkingToggle: (value: boolean) => void
   onAttachFile: (file: UploadedFile) => void
   onRemoveFile: (fileId: string) => void
   onSend: (content: string) => void
@@ -45,10 +47,12 @@ export function InputArea({
   models = [],
   selectedModel,
   effort,
+  thinkingEnabled,
   attachedFiles,
   isStreaming,
   onModelChange,
   onEffortChange,
+  onThinkingToggle,
   onAttachFile,
   onRemoveFile,
   onSend,
@@ -180,6 +184,21 @@ export function InputArea({
             />
             <span className="w-8 text-xs tabular-nums">{effort.toFixed(1)}</span>
           </div>
+
+          <button
+            type="button"
+            onClick={() => onThinkingToggle(!thinkingEnabled)}
+            className={cn(
+              'flex h-8 items-center gap-1 rounded-md border px-2 text-xs font-medium transition-colors',
+              thinkingEnabled
+                ? 'border-blue-500 bg-background text-blue-600 dark:border-blue-400 dark:bg-background dark:text-blue-400'
+                : 'border-input bg-background text-muted-foreground hover:border-blue-400 hover:text-blue-500',
+            )}
+            title={thinkingEnabled ? '关闭深度思考' : '开启深度思考'}
+          >
+            <Brain className={cn('h-3.5 w-3.5', thinkingEnabled && 'fill-blue-100 dark:fill-blue-100')} />
+            深度思考
+          </button>
         </div>
 
         {isStreaming ? (
