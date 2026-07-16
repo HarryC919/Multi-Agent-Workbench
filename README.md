@@ -167,7 +167,7 @@ An intelligent chat workbench (Kimi Workspace-like) with a decoupled frontend/ba
 
 ```bash
 git clone <repo-url>
-cd My_Agent
+cd Multi-Agent-Workbench
 ```
 
 ### 2. Start the backend

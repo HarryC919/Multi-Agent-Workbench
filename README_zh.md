@@ -165,7 +165,7 @@
 
 ```bash
 git clone <repo-url>
-cd My_Agent
+cd Multi-Agent-Workbench
 ```
 
 ### 2. 启动后端
