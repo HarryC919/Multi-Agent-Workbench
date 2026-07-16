@@ -1,12 +1,14 @@
 # AI Chat Workbench
 
+[简体中文](./README_zh.md)
+
 An intelligent chat workbench (Kimi Workspace-like) with a decoupled frontend/backend architecture, providing unified access to multiple LLM vendors with streaming dialogue.
 
 ---
 
 ## Architecture Overview
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────┐
 │  Frontend (React 19 + Vite + Tailwind CSS v4)               │
 │  ┌───────────┐ ┌──────────────────────────────────────────┐ │
@@ -71,7 +73,7 @@ An intelligent chat workbench (Kimi Workspace-like) with a decoupled frontend/ba
 ### Frontend
 
 | Category | Tech | Purpose |
-|----------|------|---------|
+| ---------- | ------ | --------- |
 | Framework | React 19 | UI construction |
 | Language | TypeScript ~6.0 | Type safety |
 | Build | Vite 8 | Dev / build tooling |
@@ -88,7 +90,7 @@ An intelligent chat workbench (Kimi Workspace-like) with a decoupled frontend/ba
 ### Backend
 
 | Category | Tech | Purpose |
-|----------|------|---------|
+| ---------- | ------ | --------- |
 | Framework | FastAPI (≥0.115) | Web server |
 | Runtime | Uvicorn | ASGI server |
 | ORM | SQLAlchemy 2.0 (async) | Database operations |
@@ -179,9 +181,9 @@ uv sync
 uv run uvicorn main:app --reload
 ```
 
-The backend runs at **http://localhost:8000**
+The backend runs at **<http://localhost:8000>**
 
-Swagger docs: http://localhost:8000/docs
+Swagger docs: <http://localhost:8000/docs>
 
 ### 3. Start the frontend
 
@@ -191,7 +193,7 @@ npm install
 npm run dev
 ```
 
-The frontend runs at **http://localhost:5173**, with Vite configured to proxy `/api` → `http://localhost:8000`.
+The frontend runs at **<http://localhost:5173>**, with Vite configured to proxy `/api` → `http://localhost:8000`.
 
 ### Docker (Experimental)
 
@@ -204,7 +206,7 @@ docker-compose up
 ## API Reference
 
 | Method | Path | Description |
-|--------|------|-------------|
+| -------- | ------ | ------------- |
 | `GET` | `/health` | Health check |
 | `GET` | `/api/conversations?q=` | List conversations (optional search) |
 | `POST` | `/api/conversations` | Create conversation |
@@ -238,7 +240,7 @@ docker-compose up
 
 SSE Response Format:
 
-```
+```text
 data: {"type":"thinking","content":"thinking process..."}
 data: {"type":"text","content":"answer content..."}
 data: {"type":"done","message":{"id":"...","content":"...","thinking":"..."}}
@@ -248,7 +250,7 @@ data: {"type":"done","message":{"id":"...","content":"...","thinking":"..."}}
 
 ## Project Structure
 
-```
+```text
 My_Agent/
 ├── backend/                     # Python backend
 │   ├── main.py                  # FastAPI entry point
@@ -316,6 +318,7 @@ My_Agent/
 ├── REQUIREMENT.md               # Requirements document
 ├── DEVELOPMENT_PLAN.md          # Development plan
 ├── PROGRESS.md                  # Progress tracking
+├── README.md                    # README 
 └── README_zh.md                 # Chinese README
 ```
 
@@ -324,7 +327,7 @@ My_Agent/
 ## Database Models
 
 | Table | Description | Key Fields |
-|-------|-------------|------------|
+| ------- | ------------- | ------------ |
 | `conversations` | Conversations | id, title, created_at, updated_at |
 | `messages` | Messages | id, conversation_id, role, content, thinking, model, status |
 | `uploaded_files` | Uploaded files | id, conversation_id, name, text_content |
@@ -339,12 +342,11 @@ See [DEVELOPMENT_PLAN.md](./DEVELOPMENT_PLAN.md) for details.
 ### Phase Summary
 
 | Phase | Status | Description |
-|-------|--------|-------------|
+| ------- | -------- | ------------- |
 | Phase 1 | ✅ Done | Backend framework + database + model adapters + streaming chat API |
 | Phase 2 | ✅ Done | Frontend framework + conversation management + message display + streaming render |
 | Phase 3 | ✅ Done | Deep Thinking end-to-end |
 | Phase 4 | ✅ Done | File upload + model management + virtual scrolling |
-| Phase 5 | ⏳ Pending | Docker deployment + configuration optimization |
 
 Latest progress: [PROGRESS.md](./PROGRESS.md)
 

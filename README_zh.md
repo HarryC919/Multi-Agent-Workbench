@@ -1,12 +1,14 @@
 # AI Chat Workbench
 
+[English](./README.md)
+
 智能对话工作台（类 Kimi Workspace），前后端分离实现，支持多厂商大模型统一接入与流式对话。
 
 ---
 
 ## 架构概览
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────┐
 │  Frontend (React 19 + Vite + Tailwind CSS v4)               │
 │  ┌───────────┐ ┌──────────────────────────────────────────┐ │
@@ -69,7 +71,7 @@
 ### 前端
 
 | 类别 | 技术 | 用途 |
-|------|------|------|
+| ------ | ------ | ------ |
 | 框架 | React 19 | UI 构建 |
 | 语言 | TypeScript ~6.0 | 类型安全 |
 | 构建 | Vite 8 | 开发/构建 |
@@ -86,7 +88,7 @@
 ### 后端
 
 | 类别 | 技术 | 用途 |
-|------|------|------|
+| ------ | ------ | ------ |
 | 框架 | FastAPI (≥0.115) | Web 服务 |
 | 运行时 | Uvicorn | ASGI 服务器 |
 | ORM | SQLAlchemy 2.0 (async) | 数据库操作 |
@@ -177,9 +179,9 @@ uv sync
 uv run uvicorn main:app --reload
 ```
 
-后端默认运行在 **http://localhost:8000**
+后端默认运行在 **<http://localhost:8000>**
 
-Swagger 文档：http://localhost:8000/docs
+Swagger 文档：<http://localhost:8000/docs>
 
 ### 3. 启动前端
 
@@ -189,7 +191,7 @@ npm install
 npm run dev
 ```
 
-前端默认运行在 **http://localhost:5173**，Vite 已配置代理 `/api` → `http://localhost:8000`。
+前端默认运行在 **<http://localhost:5173>**，Vite 已配置代理 `/api` → `http://localhost:8000`。
 
 ### Docker 部署（实验性）
 
@@ -202,7 +204,7 @@ docker-compose up
 ## API 文档
 
 | 方法 | 路径 | 说明 |
-|------|------|------|
+| ------ | ------ | ------ |
 | `GET` | `/health` | 健康检查 |
 | `GET` | `/api/conversations?q=` | 列出会话（可选搜索） |
 | `POST` | `/api/conversations` | 创建会话 |
@@ -236,7 +238,7 @@ docker-compose up
 
 SSE 响应格式：
 
-```
+```text
 data: {"type":"thinking","content":"思考过程..."}
 data: {"type":"text","content":"回答内容..."}
 data: {"type":"done","message":{"id":"...","content":"...","thinking":"..."}}
@@ -246,7 +248,7 @@ data: {"type":"done","message":{"id":"...","content":"...","thinking":"..."}}
 
 ## 项目结构
 
-```
+```text
 My_Agent/
 ├── backend/                     # Python 后端
 │   ├── main.py                  # FastAPI 入口
@@ -313,7 +315,9 @@ My_Agent/
 ├── docker-compose.yml
 ├── REQUIREMENT.md               # 需求文档
 ├── DEVELOPMENT_PLAN.md          # 开发计划
-└── PROGRESS.md                  # 进度跟踪
+├── PROGRESS.md                  # 进度跟踪
+├── README.md                    # README
+└── README_zh.md                 # 中文 README
 ```
 
 ---
@@ -321,7 +325,7 @@ My_Agent/
 ## 数据库模型
 
 | 表 | 说明 | 关键字段 |
-|----|------|----------|
+| ---- | ------ | ---------- |
 | `conversations` | 会话 | id, title, created_at, updated_at |
 | `messages` | 消息 | id, conversation_id, role, content, thinking, model, status |
 | `uploaded_files` | 上传文件 | id, conversation_id, name, text_content |
@@ -336,12 +340,11 @@ My_Agent/
 ### 阶段概览
 
 | 阶段 | 状态 | 内容 |
-|------|------|------|
+| ------ | ------ | ------ |
 | Phase 1 | ✅ 完成 | 后端框架 + 数据库 + 模型适配 + 流式聊天 API |
 | Phase 2 | ✅ 完成 | 前端框架 + 会话管理 + 消息展示 + 流式渲染 |
 | Phase 3 | ✅ 完成 | 深度思考（Thinking）全链路 |
 | Phase 4 | ✅ 完成 | 文件上传 + 模型管理 + 虚拟滚动 |
-| Phase 5 | ⏳ 未开始 | Docker 部署 + 配置优化 |
 
 当前进度详见 [PROGRESS.md](./PROGRESS.md)。
 

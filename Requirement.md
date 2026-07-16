@@ -617,4 +617,3 @@ interface WorkspaceState {
   ```
   生产环境可用 `gunicorn` + `uvicorn.workers.UvicornWorker`。
 - **前端**：`npm run build` 产出静态文件，由 Nginx 代理 `/api` 到后端 8000 端口。
-- **Docker**：可编写 Dockerfile 将后端打包为容器。
