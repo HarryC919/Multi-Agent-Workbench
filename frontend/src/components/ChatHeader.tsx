@@ -16,7 +16,7 @@ export function ChatHeader({ title, models = [], selectedModel, onModelChange }:
 
   return (
     <header className="flex h-14 items-center justify-between border-b px-4">
-      <h2 className="truncate text-sm font-medium">{title}</h2>
+      <h2 className="min-w-0 truncate pr-3 text-sm font-medium" title={title}>{title}</h2>
       <div className="flex items-center gap-2">
         <Button variant="outline" size="sm" disabled>
           <Database className="mr-1 h-4 w-4" />

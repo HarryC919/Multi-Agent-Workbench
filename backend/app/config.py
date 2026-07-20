@@ -39,6 +39,15 @@ class Settings(BaseSettings):
     # Gemini
     gemini_api_key: str = ""
 
+    # AgentService phase 1 — ReAct loop knobs.
+    # NOTE: step_temperature / final_temperature are accepted here as
+    # placeholders; the current adapters do not accept a temperature
+    # argument, so they are not yet forwarded. Phase 2 will wire them
+    # through the adapter layer.
+    agent_max_steps: int = 8
+    agent_step_temperature: float = 0.7
+    agent_final_temperature: float = 0.4
+
     # Database
     database_url: str = "sqlite+aiosqlite:///./workbench.db"
 

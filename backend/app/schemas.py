@@ -24,8 +24,22 @@ class ChatRequest(BaseModel):
     rag_knowledge_base_id: str | None = None  # reserved for RAG extension
 
 
+class AgentChatRequest(ChatRequest):
+    """Request body for `/api/agent-chat` (AgentService phase 1).
+
+    Inherits all ChatRequest fields. Adds knobs for the ReAct loop; the
+    step / final temperature fields are accepted for forward-compat but are
+    not yet forwarded to adapters (adapters do not accept a temperature
+    argument as of this phase).
+    """
+
+    max_steps: int = 8
+    step_temperature: float | None = None
+    final_temperature: float | None = None
+
+
 class ChatChunk(BaseModel):
-    type: Literal["text", "thinking", "done", "error"]
+    type: Literal["text", "thinking", "done", "error", "warning"]
     content: str | None = None
     finish_reason: str | None = None
     message: str | None = None

@@ -1,16 +1,46 @@
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-
 # OS
 .DS_Store
 Thumbs.db
 
+# Editor
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+.venv/
+venv/
+env/
+ENV/
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# Environment variables
+.env
+.env.local
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+backend/test_workbench.db
+frontend/workbench.db
+
+# Test / Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+coverage/
+
 # Logs
 *.log
-npm-debug.log*
 
-# Environment
-.env
+# Build artifacts
+*.egg-info/
+build/

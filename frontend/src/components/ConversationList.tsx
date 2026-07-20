@@ -163,7 +163,7 @@ export function ConversationList({
                       : 'hover:bg-muted',
                   )}
                 >
-                  <span className="flex-1 truncate pr-2">{conversation.title}</span>
+                  <span className="min-w-0 flex-1 truncate pr-2" title={conversation.title}>{conversation.title}</span>
                   <div className="relative">
                     <Button
                       variant="ghost"

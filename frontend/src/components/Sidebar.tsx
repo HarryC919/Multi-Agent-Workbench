@@ -42,8 +42,8 @@ export function Sidebar({
   }
 
   return (
-    <div className="flex h-full" style={{ width }}>
-      <div className="flex flex-1 flex-col border-r bg-background">
+    <div className="flex h-full shrink-0 overflow-hidden" style={{ width }}>
+      <div className="flex min-w-0 flex-1 flex-col border-r bg-background">
         <div className="flex items-center justify-between border-b px-3 py-2">
           <span className="text-sm font-semibold">AI Workbench</span>
           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setIsCollapsed(true)}>

@@ -3,9 +3,14 @@ name = "ai-chat-workbench"
 version = "0.1.0"
 description = "Intelligent chat workbench backend (FastAPI)"
 requires-python = ">=3.11"
+# `uvicorn[standard]` pulls watchfiles/uvloop/httptools which fail to build
+# or are unavailable on some Windows Python versions. Instead, pin uvicorn
+# without the [standard] extra and gate the watcher/loop packages behind
+# platform markers so Windows gets a pure-asyncio loop (no watcher binary),
+# while unix keeps the fast path and `--reload` still works.
 dependencies = [
     "fastapi>=0.115.0",
-    "uvicorn[standard]>=0.32.0",
+    "uvicorn>=0.32.0",
     "httpx>=0.27.0",
     "python-multipart>=0.0.12",
     "pydantic-settings>=2.6.0",
@@ -13,6 +18,9 @@ dependencies = [
     "aiosqlite>=0.20.0",
     "pdfplumber>=0.11.4",
     "python-docx>=1.1.2",
+    "watchfiles>=0.21.0; platform_system != 'Windows'",
+    "httptools>=0.6.4; platform_system != 'Windows'",
+    "uvloop>=0.21.0; platform_system != 'Windows'",
 ]
 
 [dependency-groups]

@@ -369,3 +369,24 @@ My_Agent/
 ## 10. 目前状态
 
 完成
+
+---
+
+## 11. 未来开发计划
+
+### 11.1 跨平台兼容性检查
+- 检查 Windows 平台 npm 包缺失问题（如 `@rollup/rollup-darwin-arm64` 等平台特定二进制）
+- 解决 Linux 平台无法下载依赖的问题（如 uv 安装、系统库缺失等）
+- 补充 CI 配置（如 GitHub Actions）做多平台验证
+
+### 11.2 新增 AgentService 编排层
+- **保持现有架构不变**：Adapter、ConversationService、Streaming 架构不动
+- 新增 `AgentService` 作为 Agent 编排层，**不让 LangChain 接管整个后端**
+- AgentService 位于 `backend/app/services/agent_service.py`，与 ConversationService 平级
+- 职责：接收用户意图 → 编排 Agent 执行流程 → 调用 Adapter 完成 LLM 调用 → 返回结果
+
+### 11.3 在 AgentService 内部引入 LangChain/LangGraph
+- 在 AgentService 内部使用 LangChain/LangGraph，不污染外部架构
+- 负责：工具调用（Tool Calling）、RAG（检索增强生成）、多轮推理等能力
+- 保持 Adapter 层作为纯 LLM 调用抽象，AgentService 通过 Adapter 获取 LLM 响应
+- 确保 LangChain 的引入范围仅限于 AgentService 内部，不扩散到其他模块

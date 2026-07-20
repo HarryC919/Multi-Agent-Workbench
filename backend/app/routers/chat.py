@@ -8,22 +8,10 @@ from app.adapters.factory import get_adapter_by_model_id
 from app.database import AsyncSessionLocal
 from app.dependencies import get_db
 from app.schemas import ChatRequest
+from app.services._chat_helpers import attach_files_to_messages
 from app.services.conversation_service import ConversationService
 
 router = APIRouter()
-
-
-def _attach_files_to_messages(messages: list[dict], files: list) -> list[dict]:
-    if not files:
-        return messages
-
-    file_texts = "\n\n".join([f"[文件: {f.name}]\n{f.content}" for f in files])
-    messages = [dict(m) for m in messages]
-    for i in range(len(messages) - 1, -1, -1):
-        if messages[i].get("role") == "user":
-            messages[i]["content"] += f"\n\n{file_texts}"
-            break
-    return messages
 
 
 async def generate_stream(request: ChatRequest):
@@ -61,7 +49,7 @@ async def generate_stream(request: ChatRequest):
 
         # Prepare messages with attached files
         messages = [m.model_dump() for m in request.messages]
-        messages = _attach_files_to_messages(messages, request.files)
+        messages = attach_files_to_messages(messages, request.files)
 
         try:
             adapter = await get_adapter_by_model_id(request.model, db)

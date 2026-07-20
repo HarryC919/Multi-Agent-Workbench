@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from app.database import engine, Base, AsyncSessionLocal
 from app.logging_config import setup_logging
 from app.models import Conversation, Message, UploadedFile, ModelConfig  # noqa: F401
-from app.routers import chat, conversations, models, skills, upload
+from app.routers import agent, chat, conversations, models, skills, upload
 from app.seed import seed_models
 
 setup_logging()
@@ -76,6 +76,7 @@ app.add_middleware(
 
 app.include_router(conversations.router, prefix="/api")
 app.include_router(chat.router, prefix="/api")
+app.include_router(agent.router, prefix="/api")
 app.include_router(upload.router, prefix="/api")
 app.include_router(models.router, prefix="/api")
 app.include_router(skills.router, prefix="/api")
