@@ -33,16 +33,20 @@ def inject_retrieved_context(messages: list[dict[str, Any]], chunks: list[Any]) 
     Used by the normal chat path when a KB is selected: retrieved top-K
     passages are surfaced as a ``[知识库检索结果]`` section **before** the
     user's original question (which is preserved verbatim). ``chunks`` is any
-    iterable of objects exposing ``.filename``, ``.heading``, and ``.text``
-    (pydantic ``RetrievedChunk`` or duck-typed equivalents). Returns a shallow
-    copy; a no-op when ``chunks`` is empty.
+    iterable of objects exposing ``.filename``, ``.heading``, and ``.text`` /
+    ``.chunk_text`` (pydantic ``KnowledgeRetrievalResult`` or duck-typed
+    equivalents). Returns a shallow copy; a no-op when ``chunks`` is empty.
     """
     chunks = list(chunks)
     if not chunks:
         return messages
 
+    def _chunk_text(c: Any) -> str:
+        return getattr(c, "chunk_text", None) or getattr(c, "text", "") or ""
+
     block = "\n\n".join(
-        f"[来源: {c.filename}{' #' + c.heading if c.heading else ''}]\n{c.text}" for c in chunks
+        f"[来源: {c.filename}{' #' + c.heading if getattr(c, 'heading', None) else ''}]\n{_chunk_text(c)}"
+        for c in chunks
     )
     retrieved_section = f"[知识库检索结果]\n{block}\n\n[以下为用户原始问题]"
     out = [dict(m) for m in messages]

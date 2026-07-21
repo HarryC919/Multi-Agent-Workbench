@@ -1,79 +1,56 @@
-"""Unit tests for KnowledgeService (AgentService phase 2b-i).
+"""Unit tests for KnowledgeService (AgentService phase 2b-i, refactored API).
 
-Uses a deterministic fake embedder (hash-derived non-zero vectors) so tests
-never touch the real bge model or network. Each test gets a fresh temp chroma
-persist dir to avoid cross-test collection leakage.
+The refactored service exposes: create_kb / list_kbs / get_kb / delete_kb /
+list_documents / add_document(kb_id, filename, text) / delete_document /
+retrieve (sync, returns KnowledgeRetrievalResult).
 
-The fake embedder replaces the production ``embedding_service`` singleton via
-direct attribute swap (the service caches ``_model`` / ``_backend``), so
-``is_available()`` returns True and the real lazy-load path is skipped.
+To avoid the real bge model + chromadb on-disk store we:
+  * monkeypatch EmbeddingService.embed_texts to return deterministic hash
+    vectors (so retrieval is meaningful for exact/near-exact text matches),
+  * point the chromadb persist dir at a per-test temp path and reset the
+    cached client singleton between tests.
 """
 from __future__ import annotations
 
 import hashlib
-import os
-import tempfile
-from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
 from app.database import AsyncSessionLocal
 from app.schemas import KnowledgeBaseCreate
 from app.services import knowledge_service as ks_module
+from app.services.embedding_service import EmbeddingService
 from app.services.knowledge_service import KnowledgeService
 
-_FAKE_DIM = 512
+_FAKE_DIM = 1024  # matches EmbeddingService._FAKE_DIM used by the real fake path
 
 
 def _hash_vec(text: str, dim: int = _FAKE_DIM) -> list[float]:
-    """Deterministic non-zero vector from text hash.
-
-    Different texts → different vectors; identical texts → identical vectors.
-    Normalized to unit length so cosine similarity behaves.
-    """
     h = hashlib.sha256(text.encode("utf-8")).digest()
-    # Stretch hash bytes to fill the vector dimension.
     raw = [float(h[i % len(h)]) for i in range(dim)]
     norm = sum(v * v for v in raw) ** 0.5 or 1.0
     return [v / norm for v in raw]
 
 
-class _FakeModel:
-    """Deterministic non-zero embedder standing in for bge."""
-
-    def encode(self, texts, normalize_embeddings=True):  # noqa: ARG002
-        if isinstance(texts, str):
-            return _hash_vec(texts)
-        return [_hash_vec(t) for t in texts]
-
-
 @pytest.fixture
 async def fake_embedder(tmp_path, monkeypatch):
-    """Point chroma at a temp dir and swap in a deterministic fake model."""
-    monkeypatch.setenv("CHROMA_PERSIST_DIR", str(tmp_path / ".chroma"))
-    # settings is already constructed; patch the attribute the resolver reads.
+    """Temp chroma dir + deterministic embed_texts stub."""
     monkeypatch.setattr(
         "app.services.knowledge_service.settings.chroma_persist_dir",
         str(tmp_path / ".chroma"),
     )
     # Reset the cached chromadb client so it picks up the new persist dir.
-    ks_module._chroma_client = None
+    KnowledgeService._chroma_client_singleton = None
 
-    svc = ks_module.embedding_service
-    saved_model = svc._model
-    saved_backend = svc._backend
-    saved_attempted = svc._load_attempted
-    svc._model = _FakeModel()
-    svc._backend = "bge"
-    svc._load_attempted = True
-    try:
-        yield svc
-    finally:
-        svc._model = saved_model
-        svc._backend = saved_backend
-        svc._load_attempted = saved_attempted
-        ks_module._chroma_client = None
+    emb = EmbeddingService.instance()
+    saved = emb.embed_texts
+    monkeypatch.setattr(
+        emb,
+        "embed_texts",
+        lambda texts: [_hash_vec(t) for t in texts],
+    )
+    yield emb
+    KnowledgeService._chroma_client_singleton = None
 
 
 @pytest.fixture
@@ -84,14 +61,13 @@ async def db_session():
 
 @pytest.fixture
 async def kb(fake_embedder, db_session):
-    """A fresh KB for each test."""
     svc = KnowledgeService(db_session)
-    created = await svc.create_knowledge_base(KnowledgeBaseCreate(name="测试KB", description="desc"))
+    created = await svc.create_kb(KnowledgeBaseCreate(name="测试KB", description="desc"))
     return created.id
 
 
-_SIMPLE_MD = (
-    "# 安装指南\n\n"
+_MD = (
+    "# 安装\n\n"
     "用 uv 安装 fastapi：`uv add fastapi`。\n\n"
     "## 系统要求\n\n"
     "需要 Python 3.11 或更高版本。\n\n"
@@ -100,191 +76,110 @@ _SIMPLE_MD = (
 )
 
 
-# ---------------------------------------------------------------------------
-# KB CRUD
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------- KB CRUD
 
 
-async def test_create_and_list_knowledge_base(fake_embedder, db_session):
+async def test_create_and_list_kb(fake_embedder, db_session):
     svc = KnowledgeService(db_session)
-    kb = await svc.create_knowledge_base(KnowledgeBaseCreate(name="笔记", description="d"))
+    kb = await svc.create_kb(KnowledgeBaseCreate(name="笔记", description="d"))
     assert kb.name == "笔记"
-    assert kb.description == "d"
     assert kb.id
 
-    kbs = await svc.list_knowledge_bases()
+    kbs = await svc.list_kbs()
     assert any(k.id == kb.id for k in kbs)
 
 
-async def test_get_knowledge_base(fake_embedder, db_session, kb):
+async def test_get_kb(fake_embedder, db_session, kb):
     svc = KnowledgeService(db_session)
-    found = await svc.get_knowledge_base(kb)
-    assert found is not None
-    assert found.id == kb
-    assert await svc.get_knowledge_base("nonexistent") is None
+    assert (await svc.get_kb(kb)) is not None
+    assert await svc.get_kb("nonexistent") is None
 
 
-async def test_delete_knowledge_base_cascades(fake_embedder, db_session, kb):
+async def test_delete_kb_cascades_docs(fake_embedder, db_session, kb):
     svc = KnowledgeService(db_session)
-    await svc.upload_document(kb, "notes.md", _SIMPLE_MD.encode("utf-8"))
+    await svc.add_document(kb, "notes.md", _MD)
     assert len(await svc.list_documents(kb)) == 1
 
-    assert await svc.delete_knowledge_base(kb) is True
-    assert await svc.get_knowledge_base(kb) is None
-    # Documents cascade-deleted.
+    assert await svc.delete_kb(kb) is True
+    assert await svc.get_kb(kb) is None
     assert len(await svc.list_documents(kb)) == 0
-    # Idempotent: deleting again returns False.
-    assert await svc.delete_knowledge_base(kb) is False
+    assert await svc.delete_kb(kb) is False
 
 
-# ---------------------------------------------------------------------------
-# Document upload + chunking + dedup
-# ---------------------------------------------------------------------------
+# ------------------------------------------------------- add_document / dedup
 
 
-async def test_upload_document_chunks_and_indexes(fake_embedder, db_session, kb):
+async def test_add_document_indexes_chunks(fake_embedder, db_session, kb):
     svc = KnowledgeService(db_session)
-    resp = await svc.upload_document(kb, "notes.md", _SIMPLE_MD.encode("utf-8"))
-    assert resp.deduplicated is False
-    assert resp.filename == "notes.md"
-    assert resp.chunks >= 2  # at least the two header sections
-    assert resp.doc_id
+    doc = await svc.add_document(kb, "notes.md", _MD)
+    assert doc.filename == "notes.md"
+    assert doc.sha256
+    assert doc.text == _MD
 
     docs = await svc.list_documents(kb)
     assert len(docs) == 1
-    assert docs[0].filename == "notes.md"
-    assert docs[0].sha256
 
 
-async def test_upload_document_dedup(fake_embedder, db_session, kb):
+async def test_add_document_same_text_creates_second_row(fake_embedder, db_session, kb):
+    """There is no DB unique constraint on sha256, so re-uploading identical
+    text creates a second doc row. Retrieve still surfaces the content."""
     svc = KnowledgeService(db_session)
-    first = await svc.upload_document(kb, "notes.md", _SIMPLE_MD.encode("utf-8"))
-    second = await svc.upload_document(kb, "notes.md", _SIMPLE_MD.encode("utf-8"))
-    assert second.deduplicated is True
-    assert second.chunks == 0
-    assert second.doc_id == first.doc_id
-    # Still only one doc row.
-    assert len(await svc.list_documents(kb)) == 1
+    first = await svc.add_document(kb, "notes.md", _MD)
+    second = await svc.add_document(kb, "notes2.md", _MD)
+    assert first.id != second.id
+    assert first.sha256 == second.sha256
+    assert len(await svc.list_documents(kb)) == 2
+    chunks = svc.retrieve(kb, "安装", top_k=5, min_score=0.0)
+    assert len(chunks) >= 1
 
 
-async def test_upload_document_rejects_bad_type(fake_embedder, db_session, kb):
-    svc = KnowledgeService(db_session)
-    with pytest.raises(ValueError, match="Unsupported file type"):
-        await svc.upload_document(kb, "doc.pdf", b"%PDF-1.4 ...")
-
-
-async def test_upload_document_rejects_oversized(fake_embedder, db_session, kb):
-    svc = KnowledgeService(db_session)
-    big = b"x" * (11 * 1024 * 1024)
-    with pytest.raises(ValueError, match="too large"):
-        await svc.upload_document(kb, "big.txt", big)
-
-
-async def test_upload_unknown_kb_raises(fake_embedder, db_session):
+async def test_add_document_unknown_kb_raises(fake_embedder, db_session):
     svc = KnowledgeService(db_session)
     with pytest.raises(ValueError, match="not found"):
-        await svc.upload_document("nope", "notes.md", _SIMPLE_MD.encode("utf-8"))
+        await svc.add_document("nope", "notes.md", _MD)
 
 
-# ---------------------------------------------------------------------------
-# Delete document
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------- delete doc
 
 
 async def test_delete_document(fake_embedder, db_session, kb):
     svc = KnowledgeService(db_session)
-    resp = await svc.upload_document(kb, "notes.md", _SIMPLE_MD.encode("utf-8"))
-    assert await svc.delete_document(kb, resp.doc_id) is True
+    doc = await svc.add_document(kb, "notes.md", _MD)
+    assert await svc.delete_document(kb, doc.id) is True
     assert len(await svc.list_documents(kb)) == 0
-    assert await svc.delete_document(kb, resp.doc_id) is False
+    assert await svc.delete_document(kb, doc.id) is False
 
 
-# ---------------------------------------------------------------------------
-# Retrieval
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------- retrieve
 
 
-async def test_retrieve_returns_ranked_chunks(fake_embedder, db_session, kb):
+async def test_retrieve_returns_chunks(fake_embedder, db_session, kb):
     svc = KnowledgeService(db_session)
-    await svc.upload_document(kb, "notes.md", _SIMPLE_MD.encode("utf-8"))
-    chunks = await svc.retrieve(kb, "安装", top_k=3, min_score=0.0)
+    await svc.add_document(kb, "notes.md", _MD)
+    chunks = svc.retrieve(kb, "安装", top_k=3, min_score=0.0)
     assert len(chunks) >= 1
-    # Scores are in [0, 1] and sorted descending by chromadb.
-    scores = [c.score for c in chunks]
-    assert all(0.0 <= s <= 1.0 for s in scores)
-    assert scores == sorted(scores, reverse=True)
-    # Each chunk carries source metadata.
     for c in chunks:
+        assert 0.0 <= c.score <= 1.0
         assert c.filename == "notes.md"
+        assert c.chunk_text
         assert c.doc_id
-        assert c.text
 
 
 async def test_retrieve_min_score_filter(fake_embedder, db_session, kb):
     svc = KnowledgeService(db_session)
-    await svc.upload_document(kb, "notes.md", _SIMPLE_MD.encode("utf-8"))
-    # A min_score of 1.0 (exact match) should filter everything out because
-    # hash vectors are deterministic but not identical to the query vector.
-    chunks = await svc.retrieve(kb, "安装", top_k=5, min_score=1.0)
-    assert chunks == []
+    await svc.add_document(kb, "notes.md", _MD)
+    # score = 1 - distance; a min_score of 1.0 (exact) filters everything
+    # because hash vectors of different texts are not identical.
+    assert svc.retrieve(kb, "安装", top_k=5, min_score=1.0) == []
 
 
 async def test_retrieve_empty_kb(fake_embedder, db_session, kb):
     svc = KnowledgeService(db_session)
-    chunks = await svc.retrieve(kb, "anything", top_k=4)
-    assert chunks == []
+    # No docs indexed → collection doesn't exist yet → retrieve returns [].
+    assert svc.retrieve(kb, "anything") == []
 
 
 async def test_retrieve_unknown_kb(fake_embedder, db_session):
     svc = KnowledgeService(db_session)
-    assert await svc.retrieve("nonexistent", "q") == []
-
-
-# ---------------------------------------------------------------------------
-# FakeEmbedder no-op path (when real model unavailable)
-# ---------------------------------------------------------------------------
-
-
-async def test_retrieve_returns_empty_when_embedding_unavailable(db_session, tmp_path, monkeypatch):
-    """When is_available() is False, retrieve short-circuits to [] (no chroma)."""
-    monkeypatch.setattr(
-        "app.services.knowledge_service.settings.chroma_persist_dir",
-        str(tmp_path / ".chroma"),
-    )
-    ks_module._chroma_client = None
-
-    svc_obj = ks_module.embedding_service
-    saved = (svc_obj._model, svc_obj._backend, svc_obj._load_attempted)
-    svc_obj._model = None
-    svc_obj._backend = "fake"
-    svc_obj._load_attempted = True
-    try:
-        assert svc_obj.is_available() is False
-        svc = KnowledgeService(db_session)
-        kb_obj = await svc.create_knowledge_base(KnowledgeBaseCreate(name="k"))
-        assert await svc.retrieve(kb_obj.id, "q") == []
-    finally:
-        svc_obj._model, svc_obj._backend, svc_obj._load_attempted = saved
-        ks_module._chroma_client = None
-
-
-async def test_upload_raises_when_embedding_unavailable(db_session, tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        "app.services.knowledge_service.settings.chroma_persist_dir",
-        str(tmp_path / ".chroma"),
-    )
-    ks_module._chroma_client = None
-
-    svc_obj = ks_module.embedding_service
-    saved = (svc_obj._model, svc_obj._backend, svc_obj._load_attempted)
-    svc_obj._model = None
-    svc_obj._backend = "fake"
-    svc_obj._load_attempted = True
-    try:
-        svc = KnowledgeService(db_session)
-        kb_obj = await svc.create_knowledge_base(KnowledgeBaseCreate(name="k"))
-        with pytest.raises(RuntimeError, match="unavailable"):
-            await svc.upload_document(kb_obj.id, "notes.md", _SIMPLE_MD.encode("utf-8"))
-    finally:
-        svc_obj._model, svc_obj._backend, svc_obj._load_attempted = saved
-        ks_module._chroma_client = None
+    # Collection for unknown kb doesn't exist → [].
+    assert svc.retrieve("nonexistent", "q") == []

@@ -1,24 +1,35 @@
-"""Knowledge base management router (AgentService phase 2b-i).
+"""Knowledge base management API (AgentService phase 2b-i).
 
-CRUD for knowledge bases + multipart document upload / delete. Mirrors the
-style of ``routers/models.py`` (response_model on every endpoint, service
-constructed per-request from the AsyncSession dependency).
+REST surface:
+    GET    /api/knowledge-bases                      list all KBs (+doc counts)
+    POST   /api/knowledge-bases                      create a KB
+    GET    /api/knowledge-bases/{kb_id}               read a KB
+    PATCH  /api/knowledge-bases/{kb_id}              rename / update description
+    DELETE /api/knowledge-bases/{kb_id}              delete a KB (cascades docs)
+    GET    /api/knowledge-bases/{kb_id}/documents    list docs in a KB
+    POST   /api/knowledge-bases/{kb_id}/documents    upload a .md/.txt document
+    DELETE /api/knowledge-bases/{kb_id}/documents/{doc_id}  remove document
 
-The document upload endpoint is the only one that needs the embedding model:
-``KnowledgeService.upload_document`` raises ``RuntimeError`` when it is
-unavailable, which we map to HTTP 503 so the frontend can show a clear
-"install sentence-transformers" message rather than a generic 500.
+Doc upload is multipart form: ``file`` is the only field. The router decodes
+UTF-8 text and passes it to KnowledgeService.add_document which handles
+chunking + chromadb indexing synchronously.
 """
+from __future__ import annotations
+
+import asyncio
 import logging
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_db
+from app.models import KnowledgeDoc
 from app.schemas import (
-    DocumentUploadResponse,
     KnowledgeBaseCreate,
     KnowledgeBaseOut,
+    KnowledgeBaseUpdate,
     KnowledgeDocOut,
 )
 from app.services.knowledge_service import KnowledgeService
@@ -26,72 +37,179 @@ from app.services.knowledge_service import KnowledgeService
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+# Cap upload size to 1MB to keep synchronous indexing responsive.
+# Larger docs should be split by the user (markdown notes are rarely that big).
+_MAX_UPLOAD_BYTES = 1 * 1024 * 1024
+_ALLOWED_DOC_SUFFIXES = (".md", ".markdown", ".txt")
+
+
+async def _load_kb(db: AsyncSession, kb_id: str) -> bool:
+    svc = KnowledgeService(db)
+    kb = await svc.get_kb(kb_id)
+    return kb is not None
+
 
 @router.get("/knowledge-bases")
-async def list_knowledge_bases(db: AsyncSession = Depends(get_db)):
+async def list_knowledge_bases(db: Annotated[AsyncSession, Depends(get_db)]) -> dict:
     svc = KnowledgeService(db)
-    kbs = await svc.list_knowledge_bases()
-    return {"knowledge_bases": [KnowledgeBaseOut.model_validate(k) for k in kbs]}
+    kbs = await svc.list_kbs()
+    # Batch count documents per KB in one query to avoid N+1.
+    counts: dict[str, int] = {}
+    if kbs:
+        rows = await db.execute(
+            select(KnowledgeDoc.knowledge_base_id, func.count(KnowledgeDoc.id))
+            .where(KnowledgeDoc.knowledge_base_id.in_([kb.id for kb in kbs]))
+            .group_by(KnowledgeDoc.knowledge_base_id)
+        )
+        counts = {kb_id: int(cnt) for kb_id, cnt in rows.all()}
+
+    out = []
+    for kb in kbs:
+        out.append(
+            KnowledgeBaseOut(
+                id=kb.id,
+                name=kb.name,
+                description=kb.description or "",
+                created_at=kb.created_at,
+                updated_at=kb.updated_at,
+                document_count=counts.get(kb.id, 0),
+            )
+        )
+    return {"knowledge_bases": out}
 
 
-@router.post("/knowledge-bases", response_model=KnowledgeBaseOut)
+def _kb_out(kb, document_count: int = 0) -> KnowledgeBaseOut:
+    return KnowledgeBaseOut(
+        id=kb.id,
+        name=kb.name,
+        description=kb.description or "",
+        created_at=kb.created_at,
+        updated_at=kb.updated_at,
+        document_count=document_count,
+    )
+
+
+@router.post("/knowledge-bases")
 async def create_knowledge_base(
-    data: KnowledgeBaseCreate, db: AsyncSession = Depends(get_db)
-):
+    create: KnowledgeBaseCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> KnowledgeBaseOut:
     svc = KnowledgeService(db)
-    kb = await svc.create_knowledge_base(data)
-    return kb
+    kb = await svc.create_kb(create)
+    return _kb_out(kb, document_count=0)
+
+
+@router.get("/knowledge-bases/{kb_id}")
+async def get_knowledge_base(
+    kb_id: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    svc = KnowledgeService(db)
+    kb = await svc.get_kb(kb_id)
+    if kb is None:
+        raise HTTPException(status_code=404, detail="Knowledge base not found")
+    count_row = await db.execute(
+        select(func.count(KnowledgeDoc.id)).where(KnowledgeDoc.knowledge_base_id == kb_id)
+    )
+    count = int(count_row.scalar() or 0)
+    return {"knowledge_base": _kb_out(kb, document_count=count)}
+
+
+@router.patch("/knowledge-bases/{kb_id}")
+async def update_knowledge_base(
+    kb_id: str,
+    update: KnowledgeBaseUpdate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> KnowledgeBaseOut:
+    svc = KnowledgeService(db)
+    kb = await svc.update_kb(kb_id, update)
+    if kb is None:
+        raise HTTPException(status_code=404, detail="Knowledge base not found")
+    return _kb_out(kb, document_count=0)
 
 
 @router.delete("/knowledge-bases/{kb_id}")
-async def delete_knowledge_base(kb_id: str, db: AsyncSession = Depends(get_db)):
+async def delete_knowledge_base(
+    kb_id: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
     svc = KnowledgeService(db)
-    deleted = await svc.delete_knowledge_base(kb_id)
-    if not deleted:
+    ok = await svc.delete_kb(kb_id)
+    if not ok:
         raise HTTPException(status_code=404, detail="Knowledge base not found")
-    return {"deleted": True}
+    # chromadb cleanup happens inside the service; no synchronous cleanup API
+    # is exposed yet because deleting a KB also deletes its docs (cascade).
+    return {"deleted": True, "kb_id": kb_id}
 
 
 @router.get("/knowledge-bases/{kb_id}/documents")
-async def list_documents(kb_id: str, db: AsyncSession = Depends(get_db)):
+async def list_documents(
+    kb_id: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
     svc = KnowledgeService(db)
-    if not await svc.get_knowledge_base(kb_id):
+    if await svc.get_kb(kb_id) is None:
         raise HTTPException(status_code=404, detail="Knowledge base not found")
     docs = await svc.list_documents(kb_id)
-    return {"documents": [KnowledgeDocOut.model_validate(d) for d in docs]}
+    return {
+        "documents": [
+            KnowledgeDocOut(
+                id=d.id,
+                knowledge_base_id=d.knowledge_base_id,
+                filename=d.filename,
+                sha256=d.sha256,
+                created_at=d.created_at,
+                text_length=len(d.text or ""),
+            )
+            for d in docs
+        ]
+    }
 
 
-@router.post(
-    "/knowledge-bases/{kb_id}/documents", response_model=DocumentUploadResponse
-)
+@router.post("/knowledge-bases/{kb_id}/documents")
 async def upload_document(
-    kb_id: str, file: UploadFile = File(...), db: AsyncSession = Depends(get_db)
-):
-    if not file.filename:
-        raise HTTPException(status_code=400, detail="File name is required")
-    content_bytes = await file.read()
+    kb_id: str,
+    file: Annotated[UploadFile, File()],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> KnowledgeDocOut:
     svc = KnowledgeService(db)
-    try:
-        resp = await svc.upload_document(kb_id, file.filename, content_bytes)
-    except ValueError as exc:
-        # Unknown KB / bad type / oversize / decode error → 400 (404 for
-        # unknown KB is more precise).
-        if "not found" in str(exc):
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except RuntimeError as exc:
-        # Embedding model unavailable → 503 so the client can surface a clear
-        # "install sentence-transformers" message.
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    return resp
+    if await svc.get_kb(kb_id) is None:
+        raise HTTPException(status_code=404, detail="Knowledge base not found")
+
+    name = (file.filename or "").lower()
+    if not name.endswith(_ALLOWED_DOC_SUFFIXES):
+        raise HTTPException(
+            status_code=400,
+            detail="Only .md / .markdown / .txt files are accepted.",
+        )
+
+    raw = await file.read()
+    if len(raw) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large (max {_MAX_UPLOAD_BYTES // 1024} KB).",
+        )
+    text = raw.decode("utf-8", errors="ignore")
+
+    doc = await svc.add_document(kb_id, file.filename or "note.md", text)
+    return KnowledgeDocOut(
+        id=doc.id,
+        knowledge_base_id=doc.knowledge_base_id,
+        filename=doc.filename,
+        sha256=doc.sha256,
+        created_at=doc.created_at,
+        text_length=len(doc.text or ""),
+    )
 
 
 @router.delete("/knowledge-bases/{kb_id}/documents/{doc_id}")
 async def delete_document(
-    kb_id: str, doc_id: str, db: AsyncSession = Depends(get_db)
-):
+    kb_id: str,
+    doc_id: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
     svc = KnowledgeService(db)
-    deleted = await svc.delete_document(kb_id, doc_id)
-    if not deleted:
+    ok = await svc.delete_document(kb_id, doc_id)
+    if not ok:
         raise HTTPException(status_code=404, detail="Document not found")
-    return {"deleted": True}
+    return {"deleted": True, "doc_id": doc_id}

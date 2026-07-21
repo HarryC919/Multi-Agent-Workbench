@@ -101,27 +101,25 @@ export interface KnowledgeBase {
   description: string
   createdAt: string
   updatedAt: string
+  /** Number of documents in this KB (populated by the list endpoint). */
+  documentCount: number
 }
 
 export interface KnowledgeDoc {
   id: string
-  kbId: string
+  /** FK column is `knowledge_base_id` on the backend → camelCased by apiFetch. */
+  knowledgeBaseId: string
   filename: string
   sha256: string
   createdAt: string
-}
-
-export interface DocumentUploadResponse {
-  docId: string
-  filename: string
-  chunks: number
-  deduplicated: boolean
+  /** Length of the stored text (full text is not sent in list responses). */
+  textLength: number
 }
 
 export interface RetrievedChunk {
   docId: string
   filename: string
-  heading: string
+  heading: string | null
+  chunkText: string
   score: number
-  text: string
 }

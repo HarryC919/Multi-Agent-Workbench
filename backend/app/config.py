@@ -48,6 +48,23 @@ class Settings(BaseSettings):
     agent_step_temperature: float = 0.7
     agent_final_temperature: float = 0.4
 
+    # AgentService phase 2b-i — RAG / knowledge base knobs. The embedding
+    # model is loaded lazily by EmbeddingService; if torch or the model
+    # is unavailable, EmbeddingService falls back to a deterministic fake
+    # embedder so the rest of the KB pipeline (CRUD, chunking, retrieve)
+    # stays exercisable in tests and on light environments.
+    embedding_model: str = "BAAI/bge-small-zh-v1.5"
+    # Device for the embedding model. Default "cpu": on Apple Silicon the
+    # auto-selected "mps" backend hangs for minutes on the first
+    # SentenceTransformer load, which makes the first document upload appear to
+    # 500/timeout. CPU is fast enough for the small batch sizes RAG uses here.
+    embedding_device: str = "cpu"
+    chroma_persist_dir: str = "./.chroma"
+    kb_chunk_size: int = 800
+    kb_chunk_overlap: int = 100
+    kb_top_k: int = 4
+    kb_min_score: float = 0.3
+
     # Database
     database_url: str = "sqlite+aiosqlite:///./workbench.db"
 

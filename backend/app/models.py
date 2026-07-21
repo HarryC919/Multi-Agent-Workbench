@@ -60,6 +60,50 @@ class UploadedFile(Base):
     conversation: Mapped["Conversation | None"] = relationship("Conversation", back_populates="files")
 
 
+class KnowledgeBase(Base):
+    """RAG knowledge base (AgentService phase 2b-i).
+
+    Holds metadata + raw documents in SQLAlchemy; embeddings live in chromadb
+    keyed by doc_id+chunk_idx so retrieval is decoupled from the relational
+    store. Deleting a KnowledgeBase cascades to its documents (and the
+    KnowledgeService is responsible for the matching chromadb cleanup).
+    """
+
+    __tablename__ = "knowledge_bases"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    name: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(default=now_utc, onupdate=now_utc)
+
+    documents: Mapped[list["KnowledgeDoc"]] = relationship(
+        "KnowledgeDoc", back_populates="knowledge_base", cascade="all, delete-orphan", order_by="KnowledgeDoc.created_at"
+    )
+
+
+class KnowledgeDoc(Base):
+    """A single document uploaded into a KnowledgeBase.
+
+    The full extracted text is persisted here so we can re-chunk later if
+    chunking strategy changes; embeddings are recomputed on demand by
+    KnowledgeService.index_document rather than stored.
+    """
+
+    __tablename__ = "knowledge_docs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    knowledge_base_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("knowledge_bases.id", ondelete="CASCADE")
+    )
+    filename: Mapped[str] = mapped_column(String(255))
+    sha256: Mapped[str] = mapped_column(String(64))
+    text: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(default=now_utc)
+
+    knowledge_base: Mapped["KnowledgeBase"] = relationship("KnowledgeBase", back_populates="documents")
+
+
 class ModelConfig(Base):
     __tablename__ = "model_configs"
 
@@ -76,37 +120,4 @@ class ModelConfig(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(default=now_utc, onupdate=now_utc)
-
-
-class KnowledgeBase(Base):
-    __tablename__ = "knowledge_bases"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
-    description: Mapped[str] = mapped_column(Text, default="")
-    created_at: Mapped[datetime] = mapped_column(default=now_utc)
-    updated_at: Mapped[datetime] = mapped_column(default=now_utc, onupdate=now_utc)
-
-    documents: Mapped[list["KnowledgeDoc"]] = relationship(
-        "KnowledgeDoc", back_populates="knowledge_base", cascade="all, delete-orphan"
-    )
-
-
-class KnowledgeDoc(Base):
-    __tablename__ = "knowledge_docs"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    # Indexed: every retrieve / list_documents query filters by kb_id.
-    kb_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("knowledge_bases.id", ondelete="CASCADE"), index=True
-    )
-    filename: Mapped[str] = mapped_column(String(255), nullable=False)
-    # sha256 of decoded text content; used for per-KB dedup on re-upload.
-    # Dedup is an explicit SELECT check (returns deduplicated=True) rather than
-    # a DB unique constraint so we can give a friendly response.
-    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
-    text: Mapped[str] = mapped_column(Text, default="")
-    created_at: Mapped[datetime] = mapped_column(default=now_utc)
-
-    knowledge_base: Mapped["KnowledgeBase"] = relationship("KnowledgeBase", back_populates="documents")
 

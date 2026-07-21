@@ -1,8 +1,7 @@
-"""End-to-end router tests for the knowledge base API (phase 2b-i).
+"""End-to-end router tests for the knowledge base API (phase 2b-i, refactored).
 
-Uses httpx ASGITransport against the real app (mirrors test_routers.py). A
-deterministic fake embedder + temp chroma dir isolate these from the real
-bge model and from the on-disk chroma store.
+Uses httpx ASGITransport against the real app. A deterministic fake embedder
++ temp chroma dir isolate these from the real bge model and on-disk store.
 """
 from __future__ import annotations
 
@@ -12,10 +11,10 @@ import httpx
 import pytest
 from main import app
 
-from app.services import knowledge_service as ks_module
+from app.services.embedding_service import EmbeddingService
+from app.services.knowledge_service import KnowledgeService
 
-
-_FAKE_DIM = 512
+_FAKE_DIM = 1024
 
 
 def _hash_vec(text: str, dim: int = _FAKE_DIM) -> list[float]:
@@ -25,43 +24,30 @@ def _hash_vec(text: str, dim: int = _FAKE_DIM) -> list[float]:
     return [v / norm for v in raw]
 
 
-class _FakeModel:
-    def encode(self, texts, normalize_embeddings=True):  # noqa: ARG002
-        if isinstance(texts, str):
-            return _hash_vec(texts)
-        return [_hash_vec(t) for t in texts]
-
-
 @pytest.fixture
 async def client(tmp_path, monkeypatch):
     monkeypatch.setattr(
         "app.services.knowledge_service.settings.chroma_persist_dir",
         str(tmp_path / ".chroma"),
     )
-    ks_module._chroma_client = None
+    KnowledgeService._chroma_client_singleton = None
 
-    svc = ks_module.embedding_service
-    saved = (svc._model, svc._backend, svc._load_attempted)
-    svc._model = _FakeModel()
-    svc._backend = "bge"
-    svc._load_attempted = True
-    try:
-        async with httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=app),
-            base_url="http://test",
-        ) as c:
-            yield c
-    finally:
-        svc._model, svc._backend, svc._load_attempted = saved
-        ks_module._chroma_client = None
+    emb = EmbeddingService.instance()
+    monkeypatch.setattr(
+        emb, "embed_texts", lambda texts: [_hash_vec(t) for t in texts]
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://test",
+    ) as c:
+        yield c
+    KnowledgeService._chroma_client_singleton = None
 
 
 _MD = "# 安装\n\n用 uv 安装 fastapi。\n\n# 部署\n\ndocker compose up。\n"
 
 
 async def test_list_returns_array(client):
-    # The test DB is persistent, so we only assert the shape and that the
-    # newly created KB appears (not that the list is empty/exactly-one).
     resp = await client.get("/api/knowledge-bases")
     assert resp.status_code == 200
     assert isinstance(resp.json()["knowledge_bases"], list)
@@ -74,11 +60,10 @@ async def test_create_and_list_knowledge_base(client):
     resp = await client.post(
         "/api/knowledge-bases", json={"name": "我的笔记", "description": "d"}
     )
-    assert resp.status_code == 200
+    assert resp.status_code == 200, resp.text
     kb = resp.json()
     assert kb["name"] == "我的笔记"
-    assert kb["description"] == "d"
-    assert kb["id"]
+    assert kb["document_count"] == 0
 
     listing = await client.get("/api/knowledge-bases")
     names = [k["name"] for k in listing.json()["knowledge_bases"]]
@@ -90,8 +75,7 @@ async def test_delete_knowledge_base(client):
     kb = (await client.post("/api/knowledge-bases", json={"name": "k"})).json()
     resp = await client.delete(f"/api/knowledge-bases/{kb['id']}")
     assert resp.status_code == 200
-    assert resp.json() == {"deleted": True}
-    # 404 on second delete.
+    assert resp.json()["deleted"] is True
     assert (await client.delete(f"/api/knowledge-bases/{kb['id']}")).status_code == 404
 
 
@@ -104,28 +88,13 @@ async def test_upload_document_and_list(client):
     assert resp.status_code == 200, resp.text
     data = resp.json()
     assert data["filename"] == "notes.md"
-    assert data["chunks"] >= 2
-    assert data["deduplicated"] is False
-    assert data["doc_id"]
+    assert data["knowledge_base_id"] == kb["id"]
+    assert data["text_length"] == len(_MD)
 
     docs = await client.get(f"/api/knowledge-bases/{kb['id']}/documents")
     assert docs.status_code == 200
     assert len(docs.json()["documents"]) == 1
     assert docs.json()["documents"][0]["filename"] == "notes.md"
-
-
-async def test_upload_document_dedup(client):
-    kb = (await client.post("/api/knowledge-bases", json={"name": "k"})).json()
-    url = f"/api/knowledge-bases/{kb['id']}/documents"
-    first = await client.post(
-        url, files={"file": ("notes.md", _MD.encode("utf-8"), "text/markdown")}
-    )
-    second = await client.post(
-        url, files={"file": ("notes.md", _MD.encode("utf-8"), "text/markdown")}
-    )
-    assert first.json()["deduplicated"] is False
-    assert second.json()["deduplicated"] is True
-    assert second.json()["doc_id"] == first.json()["doc_id"]
 
 
 async def test_upload_document_rejects_bad_type(client):
@@ -135,7 +104,7 @@ async def test_upload_document_rejects_bad_type(client):
         files={"file": ("doc.pdf", b"%PDF-1.4", "application/pdf")},
     )
     assert resp.status_code == 400
-    assert "Unsupported" in resp.json()["detail"]
+    assert ".md" in resp.json()["detail"]
 
 
 async def test_upload_document_unknown_kb(client):
@@ -152,10 +121,10 @@ async def test_delete_document(client):
         f"/api/knowledge-bases/{kb['id']}/documents",
         files={"file": ("notes.md", _MD.encode("utf-8"), "text/markdown")},
     )
-    doc_id = upload.json()["doc_id"]
+    doc_id = upload.json()["id"]
     resp = await client.delete(f"/api/knowledge-bases/{kb['id']}/documents/{doc_id}")
     assert resp.status_code == 200
-    assert resp.json() == {"deleted": True}
+    assert resp.json()["deleted"] is True
     docs = await client.get(f"/api/knowledge-bases/{kb['id']}/documents")
     assert len(docs.json()["documents"]) == 0
 

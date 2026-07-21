@@ -137,14 +137,10 @@ export function KnowledgeBaseManager({ open, onClose }: KnowledgeBaseManagerProp
     if (!file || !selectedKb) return
     setUploading(true)
     try {
-      const resp = await uploadDocument(selectedKb.id, file)
-      if (resp.deduplicated) {
-        useToastStore.getState().addToast('文档已存在，跳过重复上传', 'warning')
-      } else {
-        useToastStore
-          .getState()
-          .addToast(`已上传，切分为 ${resp.chunks} 个片段`, 'success')
-      }
+      const doc = await uploadDocument(selectedKb.id, file)
+      useToastStore
+        .getState()
+        .addToast(`已上传「${doc.filename}」(${doc.textLength} 字符)`, 'success')
       await loadDocs(selectedKb.id)
     } catch (err) {
       useToastStore

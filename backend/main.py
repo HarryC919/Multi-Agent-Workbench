@@ -62,6 +62,19 @@ async def lifespan(app: FastAPI):
         except Exception:
             pass
 
+        # Lightweight migration: AgentService 2b-i renamed KnowledgeDoc.kb_id →
+        # knowledge_base_id. create_all won't alter existing tables, so an old
+        # workbench.db still has the kb_id column and inserts using the new name
+        # fail with "no column named knowledge_base_id". Rename in place when the
+        # legacy column is present (SQLite >= 3.25 supports RENAME COLUMN; the
+        # no-such-column error is ignored on already-migrated DBs).
+        try:
+            await conn.exec_driver_sql(
+                "ALTER TABLE knowledge_docs RENAME COLUMN kb_id TO knowledge_base_id"
+            )
+        except Exception:
+            pass
+
     async with AsyncSessionLocal() as session:
         await seed_models(session)
 

@@ -37,6 +37,7 @@ const KB = {
   description: 'desc',
   createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-01-01T00:00:00Z',
+  documentCount: 0,
 }
 
 describe('KnowledgeBaseManager', () => {
@@ -49,7 +50,14 @@ describe('KnowledgeBaseManager', () => {
     mockedDeleteKnowledgeBase.mockResolvedValue({ deleted: true })
     mockedListDocuments.mockResolvedValue([])
     mockedDeleteDocument.mockResolvedValue({ deleted: true })
-    mockedUploadDocument.mockResolvedValue({ docId: 'd1', filename: 'notes.md', chunks: 3, deduplicated: false })
+    mockedUploadDocument.mockResolvedValue({
+      id: 'd1',
+      knowledgeBaseId: 'kb-1',
+      filename: 'notes.md',
+      sha256: 'abc',
+      createdAt: '2026-01-01T00:00:00Z',
+      textLength: 42,
+    })
 
     useWorkspaceStore.setState({ knowledgeBases: [], selectedKbId: '' })
 

@@ -1,355 +1,326 @@
-"""Knowledge base service for AgentService phase 2b-i (RAG).
+"""Knowledge base service (AgentService phase 2b-i).
 
-Two-track persistence:
-- SQLAlchemy tables ``KnowledgeBase`` / ``KnowledgeDoc`` hold KB/doc metadata
-  and the raw text (so a re-embed / re-chunk is possible without re-upload).
-- chromadb holds the pure vector index — one collection per KB
-  (``f"kb_{kb_id}"``) so deleting a KB is O(1) ``delete_collection`` and
-  retrieval needs no metadata filter.
+Owns:
+    * SQLAlchemy CRUD over KnowledgeBase + KnowledgeDoc.
+    * Markdown chunking via langchain-text-splitters (header split → recursive
+      character split fallback) + SHA-256 dedup of uploaded text.
+    * Embedding + chromadb upsert on upload, delete on KB/doc removal.
+    * Retrieve(query, top_k, min_score) returning KnowledgeRetrievalResult.
 
-Chunking: ``MarkdownHeaderTextSplitter`` (#/##/###) →
-``RecursiveCharacterTextSplitter`` (chunk_size / overlap from settings). Files
-without markdown headers yield a single whole-doc chunk with an empty heading,
-which the recursive splitter then splits by length.
-
-Embedding goes through :data:`embedding_service` (bge-small-zh with a
-FakeEmbedder no-op fallback). When the real model is unavailable:
-``upload_document`` raises ``RuntimeError`` (router → 503) and ``retrieve``
-returns ``[]`` — RAG degrades gracefully rather than indexing garbage.
+Design notes:
+    * chromadb is process-local; the persist directory lives under
+      `settings.chroma_persist_dir`. The collection name is the KB id so
+      deletion is a single `delete_collection` call.
+    * We deliberately do NOT expose chromadb's `Embeddings` interface —
+      EmbeddingService.embed_texts gives us plain floats and we call chromadb
+      `add` with `embeddings=...` directly. This keeps the embedder swappable
+      and avoids the langchain-chroma wrapper's extra abstractions.
+    * All methods are sync. The FastAPI router runs them in a thread pool via
+      `run_in_executor`-style `await` wrapping (or synchronous route handlers
+      in the current router setup); the work is CPU/io-bound but durations are
+      small enough that thread-pool offloading is sufficient. Full async would
+      require either an async chromadb client or a worker queue and is
+      deferred to 2b-ii per the plan.
 """
-
 from __future__ import annotations
 
 import hashlib
 import logging
-from pathlib import Path
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import _BACKEND_ROOT, settings
+from app.config import settings
 from app.models import KnowledgeBase, KnowledgeDoc
 from app.schemas import (
-    DocumentUploadResponse,
     KnowledgeBaseCreate,
-    RetrievedChunk,
+    KnowledgeBaseUpdate,
+    KnowledgeRetrievalResult,
 )
-from app.services.embedding_service import embedding_service
+from app.services.embedding_service import EmbeddingService
 
 logger = logging.getLogger(__name__)
-
-# Allow these suffixes for KB document uploads.
-_ALLOWED_SUFFIXES = {".md", ".markdown", ".txt"}
-_MAX_DOC_BYTES = 10 * 1024 * 1024  # 10 MB
-
-_chroma_client: Any = None
-
-
-def _resolve_persist_dir() -> Path:
-    """Resolve chroma_persist_dir against the backend root, not CWD.
-
-    Mirrors the .env resolution in config.py so the on-disk index lives in a
-    stable location regardless of the process working directory.
-    """
-    p = Path(settings.chroma_persist_dir)
-    if not p.is_absolute():
-        p = _BACKEND_ROOT / p
-    return p
-
-
-def _get_chroma_client() -> Any:
-    """Lazy module-level chromadb PersistentClient singleton."""
-    global _chroma_client
-    if _chroma_client is None:
-        import chromadb  # lazy: avoid eager import at module load
-
-        _chroma_client = chromadb.PersistentClient(path=str(_resolve_persist_dir()))
-    return _chroma_client
-
-
-def _collection_name(kb_id: str) -> str:
-    return f"kb_{kb_id}"
-
-
-def _get_collection(kb_id: str) -> Any:
-    """Get (creating if needed) the chromadb collection for a KB.
-
-    Uses cosine distance so ``score = 1 - distance`` maps to similarity in
-    [0, 1] for normalized embeddings (bge encodes with normalize_embeddings=True).
-    """
-    return _get_chroma_client().get_or_create_collection(
-        name=_collection_name(kb_id),
-        metadata={"hnsw:space": "cosine"},
-    )
-
-
-def _chunk_text(text: str) -> list[dict[str, str]]:
-    """Split markdown text into ``[{text, heading}]`` chunks.
-
-    Lazy-imports langchain_text_splitters (not langchain-core). Markdown-
-    header splitting yields one chunk per header section; the recursive
-    splitter then bounds chunk length. Falls back to a single whole-doc
-    chunk (length-bounded) if the splitter libs are unavailable.
-    """
-    try:
-        from langchain_text_splitters import (
-            MarkdownHeaderTextSplitter,
-            RecursiveCharacterTextSplitter,
-        )
-    except Exception as exc:  # pragma: no cover - dep is declared
-        logger.warning("text splitters unavailable (%s); single-chunk fallback", exc)
-        return [{"text": text, "heading": ""}]
-
-    headers_to_split_on = [
-        ("#", "h1"),
-        ("##", "h2"),
-        ("###", "h3"),
-    ]
-    md_splitter = MarkdownHeaderTextSplitter(
-        headers_to_split_on=headers_to_split_on, strip_headers=False
-    )
-    md_chunks = md_splitter.split_text(text)
-
-    recursive = RecursiveCharacterTextSplitter(
-        chunk_size=settings.kb_chunk_size,
-        chunk_overlap=settings.kb_chunk_overlap,
-    )
-    out: list[dict[str, str]] = []
-    for md_chunk in md_chunks:
-        heading = " / ".join(
-            v for v in (
-                md_chunk.metadata.get("h1"),
-                md_chunk.metadata.get("h2"),
-                md_chunk.metadata.get("h3"),
-            )
-            if v
-        )
-        for piece in recursive.split_text(md_chunk.page_content):
-            piece = piece.strip()
-            if piece:
-                out.append({"text": piece, "heading": heading})
-    return out or [{"text": text, "heading": ""}]
 
 
 def _sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def _split_markdown(text: str) -> list[dict[str, Any]]:
+    """Chunk a markdown document.
+
+    Strategy: try `MarkdownHeaderTextSplitter` first (semantic split by
+    headings, each chunk tagged with its header path); then if any single
+    chunk still exceeds `kb_chunk_size` characters, run it through
+    `RecursiveCharacterTextSplitter` for safety. Falls back to pure
+    recursive splitting if the markdown splitter rejects the input.
+    """
+    from langchain_text_splitters import (
+        MarkdownHeaderTextSplitter,
+        RecursiveCharacterTextSplitter,
+    )
+
+    md_splitter = MarkdownHeaderTextSplitter(
+        headers_to_split_on=[
+            ("#", "h1"),
+            ("##", "h2"),
+            ("###", "h3"),
+        ],
+    )
+    recursive = RecursiveCharacterTextSplitter(
+        chunk_size=settings.kb_chunk_size,
+        chunk_overlap=settings.kb_chunk_overlap,
+    )
+
+    try:
+        md_chunks = md_splitter.split_text(text)
+    except Exception:  # noqa: BLE001 — fall back to pure recursive
+        md_chunks = []
+
+    out: list[dict[str, Any]] = []
+    if not md_chunks:
+        # No headers detected or splitter blew up; treat whole doc as one
+        # cell with no heading and let the recursive splitter carve it.
+        for piece in recursive.split_text(text):
+            out.append({"heading": None, "chunk_text": piece})
+        return out
+
+    for md_doc in md_chunks:
+        heading = " / ".join(
+            str(v) for v in md_doc.metadata.values() if v
+        ) or None
+        body = md_doc.page_content
+        # If chunk_size is small enough that md_doc is already shorter, the
+        # recursive splitter returns it whole — no harm in always running it.
+        for piece in recursive.split_text(body):
+            if not piece.strip():
+                continue
+            out.append({"heading": heading, "chunk_text": piece})
+    return out
+
+
 class KnowledgeService:
-    """Per-request KB/doc CRUD + chunking + embed + retrieve."""
+    """Owns the SQL + chromadb lifecycle for knowledge bases."""
 
-    def __init__(self, db: AsyncSession) -> None:
+    def __init__(self, db: AsyncSession):
         self.db = db
+        self.embedding = EmbeddingService.instance()
 
-    # -- KB CRUD -----------------------------------------------------------
+    # ------------------------------------------------------------------ KB
 
-    async def list_knowledge_bases(self) -> list[KnowledgeBase]:
-        result = await self.db.execute(
-            select(KnowledgeBase).order_by(KnowledgeBase.updated_at.desc())
+    async def create_kb(self, create: KnowledgeBaseCreate) -> KnowledgeBase:
+        kb = KnowledgeBase(
+            name=create.name,
+            description=create.description or "",
         )
-        return list(result.scalars().all())
-
-    async def get_knowledge_base(self, kb_id: str) -> KnowledgeBase | None:
-        result = await self.db.execute(
-            select(KnowledgeBase).where(KnowledgeBase.id == kb_id)
-        )
-        return result.scalar_one_or_none()
-
-    async def create_knowledge_base(self, data: KnowledgeBaseCreate) -> KnowledgeBase:
-        kb = KnowledgeBase(name=data.name, description=data.description or "")
         self.db.add(kb)
         await self.db.commit()
         await self.db.refresh(kb)
         return kb
 
-    async def delete_knowledge_base(self, kb_id: str) -> bool:
-        kb = await self.get_knowledge_base(kb_id)
-        if not kb:
+    async def list_kbs(self) -> list[KnowledgeBase]:
+        result = await self.db.execute(select(KnowledgeBase).order_by(KnowledgeBase.updated_at.desc()))
+        return list(result.scalars().all())
+
+    async def get_kb(self, kb_id: str) -> KnowledgeBase | None:
+        result = await self.db.execute(select(KnowledgeBase).where(KnowledgeBase.id == kb_id))
+        return result.scalar_one_or_none()
+
+    async def update_kb(self, kb_id: str, update: KnowledgeBaseUpdate) -> KnowledgeBase | None:
+        values: dict[str, Any] = {}
+        if update.name is not None:
+            values["name"] = update.name
+        if update.description is not None:
+            values["description"] = update.description
+        if not values:
+            return await self.get_kb(kb_id)
+        await self.db.execute(update(KnowledgeBase).where(KnowledgeBase.id == kb_id).values(**values))
+        await self.db.commit()
+        return await self.get_kb(kb_id)
+
+    async def delete_kb(self, kb_id: str) -> bool:
+        kb = await self.get_kb(kb_id)
+        if kb is None:
             return False
-        # Cascade deletes KnowledgeDoc rows via the ORM relationship; the
-        # chromadb collection is dropped best-effort.
         await self.db.delete(kb)
         await self.db.commit()
+        # Clean up the chromadb collection last so SQL rollback stays possible
+        # if chromadb throws — the next `delete_kb` call will re-attempt.
         try:
-            _get_chroma_client().delete_collection(name=_collection_name(kb_id))
-        except Exception as exc:  # collection may not exist
-            logger.debug("chroma delete_collection(%s) skipped: %s", kb_id, exc)
+            self._chroma_collection(kb_id, create=False).delete()
+        except Exception:  # noqa: BLE001 — chroma may already be gone
+            pass
+        try:
+            self._chroma_client().delete_collection(name=kb_id)
+        except Exception:  # noqa: BLE001
+            pass
         return True
 
-    # -- Document CRUD -----------------------------------------------------
+    # ---------------------------------------------------------------- Docs
 
     async def list_documents(self, kb_id: str) -> list[KnowledgeDoc]:
         result = await self.db.execute(
             select(KnowledgeDoc)
-            .where(KnowledgeDoc.kb_id == kb_id)
-            .order_by(KnowledgeDoc.created_at.desc())
+            .where(KnowledgeDoc.knowledge_base_id == kb_id)
+            .order_by(KnowledgeDoc.created_at)
         )
         return list(result.scalars().all())
 
-    async def _find_doc_by_sha(self, kb_id: str, sha: str) -> KnowledgeDoc | None:
-        result = await self.db.execute(
-            select(KnowledgeDoc).where(
-                KnowledgeDoc.kb_id == kb_id,
-                KnowledgeDoc.sha256 == sha,
-            )
-        )
-        return result.scalar_one_or_none()
-
-    async def upload_document(
+    async def add_document(
         self,
         kb_id: str,
         filename: str,
-        content_bytes: bytes,
-    ) -> DocumentUploadResponse:
-        """Decode, dedup, chunk, embed, and index a document into the KB.
-
-        Raises ``RuntimeError`` when the embedding model is unavailable (the
-        router maps this to HTTP 503) — we refuse to store un-searchable
-        vectors.
-        """
-        kb = await self.get_knowledge_base(kb_id)
-        if not kb:
-            raise ValueError(f"Knowledge base not found: {kb_id}")
-
-        suffix = Path(filename).suffix.lower()
-        if suffix not in _ALLOWED_SUFFIXES:
-            raise ValueError(
-                f"Unsupported file type '{suffix}'. Allowed: {sorted(_ALLOWED_SUFFIXES)}"
-            )
-        if len(content_bytes) > _MAX_DOC_BYTES:
-            raise ValueError(
-                f"File too large ({len(content_bytes)} bytes); limit {_MAX_DOC_BYTES} bytes"
-            )
-
-        try:
-            text = content_bytes.decode("utf-8", errors="replace")
-        except Exception as exc:  # pragma: no cover - decode is forgiving
-            raise ValueError(f"Could not decode file as text: {exc}") from exc
-
-        sha = _sha256(text)
-        existing = await self._find_doc_by_sha(kb_id, sha)
-        if existing:
-            return DocumentUploadResponse(
-                doc_id=existing.id,
-                filename=existing.filename,
-                chunks=0,
-                deduplicated=True,
-            )
-
-        if not embedding_service.is_available():
-            raise RuntimeError(
-                "Embedding model unavailable — install sentence-transformers "
-                "and pre-fetch the model to upload documents."
-            )
-
-        chunks = _chunk_text(text)
-        embeddings = embedding_service.embed_texts([c["text"] for c in chunks])
-        if len(embeddings) != len(chunks):
-            raise RuntimeError(
-                f"Embedding count mismatch: {len(embeddings)} vs {len(chunks)} chunks"
-            )
-
-        doc = KnowledgeDoc(kb_id=kb_id, filename=filename, sha256=sha, text=text)
+        text: str,
+    ) -> KnowledgeDoc:
+        """Add a document to a KB and index it into chromadb."""
+        kb = await self.get_kb(kb_id)
+        if kb is None:
+            raise ValueError(f"KnowledgeBase {kb_id!r} not found")
+        doc = KnowledgeDoc(
+            knowledge_base_id=kb_id,
+            filename=filename,
+            sha256=_sha256(text),
+            text=text,
+        )
         self.db.add(doc)
-        await self.db.commit()
+        try:
+            await self.db.commit()
+        except IntegrityError as exc:
+            await self.db.rollback()
+            raise ValueError(f"Failed to persist document: {exc}") from exc
         await self.db.refresh(doc)
 
-        collection = _get_collection(kb_id)
-        ids = [f"{doc.id}_{i}" for i in range(len(chunks))]
-        collection.upsert(
-            ids=ids,
-            embeddings=embeddings,
-            documents=[c["text"] for c in chunks],
-            metadatas=[
-                {"doc_id": doc.id, "filename": filename, "heading": c["heading"]}
-                for c in chunks
-            ],
-        )
-        return DocumentUploadResponse(
-            doc_id=doc.id,
-            filename=filename,
-            chunks=len(chunks),
-            deduplicated=False,
-        )
+        # Index chunks into chromadb. Failures here are logged but do not
+        # invalidate the upload — the doc is in SQL and can be re-indexed
+        # later if needed. This is the pragmatic choice for a local workbench
+        # where users tolerate transient embedding failures.
+        try:
+            self._index_doc(kb_id, doc)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Failed to index document %s for KB %s: %s", doc.id, kb_id, exc)
+        return doc
 
     async def delete_document(self, kb_id: str, doc_id: str) -> bool:
         result = await self.db.execute(
             select(KnowledgeDoc).where(
                 KnowledgeDoc.id == doc_id,
-                KnowledgeDoc.kb_id == kb_id,
+                KnowledgeDoc.knowledge_base_id == kb_id,
             )
         )
         doc = result.scalar_one_or_none()
-        if not doc:
+        if doc is None:
             return False
         await self.db.delete(doc)
         await self.db.commit()
         try:
-            collection = _get_collection(kb_id)
-            collection.delete(where={"doc_id": doc_id})
-        except Exception as exc:
-            logger.debug("chroma delete(where doc_id=%s) skipped: %s", doc_id, exc)
+            coll = self._chroma_collection(kb_id, create=False)
+            coll.delete(where={"doc_id": doc_id})
+        except Exception:  # noqa: BLE001
+            pass
         return True
 
-    # -- Retrieval ---------------------------------------------------------
+    # -------------------------------------------------------------- retrieve
 
-    async def retrieve(
+    def retrieve(
         self,
         kb_id: str,
         query: str,
         top_k: int | None = None,
         min_score: float | None = None,
-    ) -> list[RetrievedChunk]:
-        """Vector top-K retrieval. Returns ``[]`` when the embedding model is
-        unavailable (RAG no-op) or the KB has no indexed documents."""
-        if not embedding_service.is_available():
-            return []
-        kb = await self.get_knowledge_base(kb_id)
-        if not kb:
-            return []
-
+    ) -> list[KnowledgeRetrievalResult]:
         top_k = top_k if top_k is not None else settings.kb_top_k
         min_score = min_score if min_score is not None else settings.kb_min_score
-
-        query_vec = embedding_service.embed_query(query)
-        if not query_vec:
-            return []
-
+        query_vec = self.embedding.embed_texts([query])[0]
         try:
-            collection = _get_collection(kb_id)
-            result = collection.query(
-                query_embeddings=[query_vec],
-                n_results=top_k,
-                include=["documents", "metadatas", "distances"],
-            )
-        except Exception as exc:
-            logger.debug("chroma query(kb=%s) failed: %s", kb_id, exc)
+            coll = self._chroma_collection(kb_id, create=False)
+        except Exception:  # noqa: BLE001
             return []
-
-        if not result or not result.get("ids") or not result["ids"][0]:
-            return []
-
-        ids = result["ids"][0]
-        documents = result["documents"][0]
-        metadatas = result["metadatas"][0]
-        distances = result["distances"][0]
-
-        chunks: list[RetrievedChunk] = []
-        for i, _chunk_id in enumerate(ids):
-            distance = distances[i]
-            # cosine distance ∈ [0, 2]; similarity = 1 - distance.
-            score = max(0.0, 1.0 - float(distance))
+        results = coll.query(
+            query_embeddings=[query_vec],
+            n_results=top_k,
+            include=["metadatas", "documents", "distances"],
+        )
+        out: list[KnowledgeRetrievalResult] = []
+        # chromadb shape: {ids: [[...]], documents: [[...]], metadatas: [[...]],
+        #                   distances: [[...]]} — one inner list per query.
+        ids = (results.get("ids") or [[]])[0]
+        docs = (results.get("documents") or [[]])[0]
+        metas = (results.get("metadatas") or [[]])[0]
+        dists = (results.get("distances") or [[]])[0]
+        for i, raw in enumerate(docs):
+            distance = float(dists[i]) if i < len(dists) else 1.0
+            # chromadb returns a *distance* (smaller = more similar for the
+            # default cosine metric). Convert to a 0..1 similarity score:
+            # score = 1 - distance (clamped). The min_score gate uses this
+            # normalized score so configs stay metric-agnostic.
+            score = max(0.0, 1.0 - distance)
             if score < min_score:
                 continue
-            meta = metadatas[i] or {}
-            chunks.append(
-                RetrievedChunk(
-                    doc_id=str(meta.get("doc_id", "")),
-                    filename=str(meta.get("filename", "")),
-                    heading=str(meta.get("heading", "")),
+            meta = metas[i] if i < len(metas) and metas[i] else {}
+            out.append(
+                KnowledgeRetrievalResult(
+                    doc_id=meta.get("doc_id", ""),
+                    filename=meta.get("filename", ""),
+                    heading=meta.get("heading"),
+                    chunk_text=raw or "",
                     score=score,
-                    text=documents[i],
                 )
             )
-        return chunks
+        return out
+
+    # ----------------------------------------------------------- internals
+
+    def _index_doc(self, kb_id: str, doc: KnowledgeDoc) -> None:
+        chunks = _split_markdown(doc.text)
+        if not chunks:
+            return
+        texts = [c["chunk_text"] for c in chunks]
+        embeddings = self.embedding.embed_texts(texts)
+        coll = self._chroma_collection(kb_id, create=True)
+        coll.add(
+            ids=[f"{doc.id}-{i}" for i in range(len(texts))],
+            embeddings=embeddings,
+            documents=texts,
+            metadatas=[
+                {
+                    "doc_id": doc.id,
+                    "filename": doc.filename,
+                    "heading": c["heading"] or "",
+                    "chunk_idx": i,
+                }
+                for i, c in enumerate(chunks)
+            ],
+        )
+
+    # ----------------------------------------------------------- chromadb
+
+    _chroma_client_singleton: Any = None
+    _chroma_lock = __import__("threading").Lock()
+
+    @classmethod
+    def _chroma_client(cls) -> Any:
+        """Process-wide chromadb PersistentClient."""
+        if cls._chroma_client_singleton is None:
+            with cls._chroma_lock:
+                if cls._chroma_client_singleton is None:
+                    import chromadb  # noqa: WPS433 — lazy import keeps cold start cheap
+
+                    cls._chroma_client_singleton = chromadb.PersistentClient(
+                        path=settings.chroma_persist_dir
+                    )
+        return cls._chroma_client_singleton
+
+    def _chroma_collection(self, kb_id: str, *, create: bool) -> Any:
+        client = self._chroma_client()
+        # Use the embedding dimension so chromadb stores vectors of the right
+        # shape from the first upsert. `metadata={"hnsw:space": "cosine"}` keeps
+        # our distance normalization above valid.
+        metadata = {"hnsw:space": "cosine"}
+        if create:
+            return client.get_or_create_collection(name=kb_id, metadata=metadata)
+        return client.get_collection(name=kb_id)
+
+
+__all__ = ["KnowledgeService"]

@@ -53,6 +53,16 @@ async def setup_database():
         except Exception:
             pass
 
+        # AgentService phase 2b-i: KnowledgeDoc.kb_id renamed to
+        # knowledge_base_id. Mirror the production migration so an old
+        # test_workbench.db aligns with the current ORM model.
+        try:
+            await conn.exec_driver_sql(
+                "ALTER TABLE knowledge_docs RENAME COLUMN kb_id TO knowledge_base_id"
+            )
+        except Exception:
+            pass
+
     async with AsyncSessionLocal() as session:
         await seed_models(session)
 

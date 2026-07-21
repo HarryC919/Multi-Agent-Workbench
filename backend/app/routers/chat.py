@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 
@@ -61,11 +62,13 @@ async def generate_stream(request: ChatRequest):
         if request.rag_knowledge_base_id:
             try:
                 kb_svc = KnowledgeService(db)
-                chunks = await kb_svc.retrieve(
+                query = request.messages[-1].content if request.messages else ""
+                chunks = await asyncio.to_thread(
+                    kb_svc.retrieve,
                     request.rag_knowledge_base_id,
-                    request.messages[-1].content if request.messages else "",
-                    top_k=settings.kb_top_k,
-                    min_score=settings.kb_min_score,
+                    query,
+                    settings.kb_top_k,
+                    settings.kb_min_score,
                 )
                 messages = inject_retrieved_context(messages, chunks)
             except Exception as exc:

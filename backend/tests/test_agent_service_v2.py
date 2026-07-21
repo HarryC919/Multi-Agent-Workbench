@@ -346,40 +346,55 @@ def test_router_still_registered():
 # ---------------------------------------------------------------- retrieve_notes integration
 
 
-class _FakeRetrieveService:
-    """Stands in for KnowledgeService — returns canned RetrievedChunks."""
-
-    def __init__(self, chunks):
-        self._chunks = chunks
-
-    async def retrieve(self, kb_id, query, top_k, min_score):  # noqa: ARG002
-        return self._chunks
-
-
 @pytest.mark.asyncio
 async def test_retrieve_notes_flows_through_agent_loop(monkeypatch):
     """The factory-built retrieve_notes skill runs like any other tool: the
     agent emits an ``action`` event, the skill runs, an ``observation`` event
-    carries the retrieved chunks, and the transcript is persisted."""
-    from app.schemas import RetrievedChunk
+    carries the retrieved chunks, and the transcript is persisted.
+
+    The refactored skill constructs its own KnowledgeService and calls its sync
+    ``retrieve`` via ``asyncio.to_thread``. We create a real KB row (so the
+    skill's existence check passes) and monkeypatch ``KnowledgeService.retrieve``
+    to return a canned chunk without touching chromadb/embeddings.
+    """
+    from app.schemas import KnowledgeBaseCreate, KnowledgeRetrievalResult
+    from app.services.knowledge_service import KnowledgeService
     from app.skills.retrieve_notes import get_retrieve_notes_skill
 
-    chunks = [
-        RetrievedChunk(doc_id="d1", filename="notes.md", heading="安装", score=0.9, text="用 uv 安装 fastapi。"),
+    canned = [
+        KnowledgeRetrievalResult(
+            doc_id="d1",
+            filename="notes.md",
+            heading="安装",
+            chunk_text="用 uv 安装 fastapi。",
+            score=0.9,
+        )
     ]
-    retrieve_svc = _FakeRetrieveService(chunks)
+    # retrieve is sync; monkeypatch the bound method on the class so every
+    # instance (including the one the skill builds internally) returns canned.
+    monkeypatch.setattr(
+        KnowledgeService, "retrieve", lambda self, kb_id, query, top_k, min_score: canned
+    )
+
+    # Create a real KB row so the skill's `select(KnowledgeBase)` check passes.
+    async with AsyncSessionLocal() as db:
+        kb = await KnowledgeService(db).create_kb(
+            KnowledgeBaseCreate(name="测试KB", description="")
+        )
+        kb_id = kb.id
 
     conv = await _create_conversation()
     chat_model = _ScriptedChatModel(turns=[
         [_aichunk("Thought: 查笔记\nAction: retrieve_notes\nAction Input: 怎么安装?\n")],
         [_aichunk("Thought: ok\nFinal Answer: 用 uv 安装 fastapi。")],
     ])
+    skill = get_retrieve_notes_skill(kb_id)
+    assert skill is not None
     async with AsyncSessionLocal() as db:
         svc = AgentService(db)
         monkeypatch.setattr(svc, "_build_chat_model", lambda adapter, request: chat_model)
-        skills = [get_retrieve_notes_skill("kb1", retrieve_svc)]
         events, _ = await _drain(
-            svc.stream_agent_chat(_user_req("怎么安装?"), _FakeAdapter(), conv, skills=skills)
+            svc.stream_agent_chat(_user_req("怎么安装?"), _FakeAdapter(), conv, skills=[skill])
         )
 
     types = [e["type"] for e in events]
@@ -392,7 +407,8 @@ async def test_retrieve_notes_flows_through_agent_loop(monkeypatch):
     # prefix that AgentService adds), but NOT a duplicated "Observation:" from
     # the skill itself.
     assert "用 uv 安装 fastapi。" in obs["content"]
-    assert "[来源: notes.md #安装" in obs["content"]
+    assert "[来源: notes.md" in obs["content"]
+    assert "# 安装" in obs["content"]
     assert events[-1]["type"] == "done"
     msg = await _get_assistant_msg(conv.id)
     assert msg.status == "done"
@@ -406,22 +422,33 @@ async def test_retrieve_notes_flows_through_agent_loop(monkeypatch):
 async def test_retrieve_notes_empty_result_observation(monkeypatch):
     """When retrieve returns no chunks, the observation carries the empty
     message and the loop still converges."""
+    from app.schemas import KnowledgeBaseCreate
+    from app.services.knowledge_service import KnowledgeService
     from app.skills.retrieve_notes import get_retrieve_notes_skill
 
-    retrieve_svc = _FakeRetrieveService([])
+    monkeypatch.setattr(
+        KnowledgeService, "retrieve", lambda self, kb_id, query, top_k, min_score: []
+    )
+
+    async with AsyncSessionLocal() as db:
+        kb = await KnowledgeService(db).create_kb(
+            KnowledgeBaseCreate(name="测试KB", description="")
+        )
+        kb_id = kb.id
+
     conv = await _create_conversation()
     chat_model = _ScriptedChatModel(turns=[
         [_aichunk("Thought: 查笔记\nAction: retrieve_notes\nAction Input: 不相关\n")],
         [_aichunk("Thought: 没结果\nFinal Answer: 我不知道。")],
     ])
+    skill = get_retrieve_notes_skill(kb_id)
     async with AsyncSessionLocal() as db:
         svc = AgentService(db)
         monkeypatch.setattr(svc, "_build_chat_model", lambda adapter, request: chat_model)
-        skills = [get_retrieve_notes_skill("kb1", retrieve_svc)]
         events, _ = await _drain(
-            svc.stream_agent_chat(_user_req("不相关"), _FakeAdapter(), conv, skills=skills)
+            svc.stream_agent_chat(_user_req("不相关"), _FakeAdapter(), conv, skills=[skill])
         )
 
     obs = next(e for e in events if e["type"] == "observation" and e["name"] == "retrieve_notes")
-    assert "未检索到" in obs["content"]
+    assert "no matching chunks" in obs["content"]
     assert events[-1]["type"] == "done"

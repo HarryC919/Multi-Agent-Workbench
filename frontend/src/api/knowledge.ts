@@ -1,6 +1,6 @@
 import { apiFetch } from './client'
 import { snakeToCamel } from '@/lib/case'
-import type { KnowledgeBase, KnowledgeDoc, DocumentUploadResponse } from '@/types'
+import type { KnowledgeBase, KnowledgeDoc } from '@/types'
 
 // ---------------------------------------------------------------------------
 // Knowledge base CRUD (mirrors api/models.ts). The backend stores snake_case;
@@ -68,11 +68,12 @@ export async function deleteDocument(
 
 /** Upload a markdown/text document. Bypasses apiFetch because it forces
  *  Content-Type: application/json, which would break the multipart boundary.
- *  Mirrors api/upload.ts. The backend accepts .md/.markdown/.txt only. */
+ *  Mirrors api/upload.ts. The backend accepts .md/.markdown/.txt only and
+ *  returns the created KnowledgeDoc (with textLength). */
 export async function uploadDocument(
   kbId: string,
   file: File,
-): Promise<DocumentUploadResponse> {
+): Promise<KnowledgeDoc> {
   const formData = new FormData()
   formData.append('file', file)
 
@@ -89,5 +90,5 @@ export async function uploadDocument(
   }
 
   const data = (await response.json()) as unknown
-  return snakeToCamel<DocumentUploadResponse>(data)
+  return snakeToCamel<KnowledgeDoc>(data)
 }

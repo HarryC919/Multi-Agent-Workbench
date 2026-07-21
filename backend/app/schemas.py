@@ -126,6 +126,53 @@ class UploadFileResponse(BaseModel):
     text_content: str
 
 
+# --- KnowledgeBase (AgentService phase 2b-i) ---
+
+
+class KnowledgeBaseCreate(BaseModel):
+    name: str
+    description: str | None = None
+
+
+class KnowledgeBaseUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+
+
+class KnowledgeBaseOut(BaseModel):
+    id: str
+    name: str
+    description: str
+    created_at: datetime
+    updated_at: datetime
+    document_count: int = 0
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class KnowledgeDocOut(BaseModel):
+    id: str
+    knowledge_base_id: str
+    filename: str
+    sha256: str
+    created_at: datetime
+    # We do not expose the full `text` in list responses (potentially huge);
+    # callers that need it (e.g. re-index) go through the service layer.
+    text_length: int = 0
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class KnowledgeRetrievalResult(BaseModel):
+    """One chunk returned by a RAG retrieve call."""
+
+    doc_id: str
+    filename: str
+    heading: str | None = None
+    chunk_text: str
+    score: float
+
+
 class ModelConfigCreate(BaseModel):
     model_id: str
     vendor: str
@@ -189,60 +236,6 @@ class ModelConfigOut(BaseModel):
                 "updated_at": getattr(data, "updated_at"),
             }
         return data
-
-
-# ---------------------------------------------------------------------------
-# AgentService phase 2b-i — knowledge base / RAG schemas.
-# Mirrors the ModelConfig* style (Create/Update/Out split, from_attributes).
-# ---------------------------------------------------------------------------
-
-
-class KnowledgeBaseCreate(BaseModel):
-    name: str
-    description: str = ""
-
-
-class KnowledgeBaseUpdate(BaseModel):
-    name: str | None = None
-    description: str | None = None
-
-
-class KnowledgeBaseOut(BaseModel):
-    id: str
-    name: str
-    description: str = ""
-    created_at: datetime
-    updated_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class KnowledgeDocOut(BaseModel):
-    """Document metadata. Deliberately omits ``text`` — the list endpoint
-    must not dump full document bodies, only metadata for the manager UI."""
-
-    id: str
-    kb_id: str
-    filename: str
-    sha256: str
-    created_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class DocumentUploadResponse(BaseModel):
-    doc_id: str
-    filename: str
-    chunks: int
-    deduplicated: bool = False
-
-
-class RetrievedChunk(BaseModel):
-    doc_id: str
-    filename: str
-    heading: str = ""
-    score: float
-    text: str
 
 
 # Resolve forward reference
