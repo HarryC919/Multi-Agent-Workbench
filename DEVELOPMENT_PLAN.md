@@ -368,25 +368,176 @@ My_Agent/
 
 ## 10. 目前状态
 
-完成
+| 阶段 | 状态 | 说明 |
+|---|---|---|
+| 阶段一~五（脚手架 / 后端核心 / 前端核心 / 集成测试 / 部署文档） | ✅ 完成 | v1.0 验收条件全部满足，见 README 与 PROGRESS 一~九节 |
+| 跨平台兼容 + 部署交付物 + 性能测试 + Skills 挂载 | ✅ 完成 | docker-compose 与 GHA 三平台 matrix 落地，详见 PROGRESS 第十二节 |
+| AgentService 第一期（多轮推理 / ReAct 无工具） | ✅ 完成 | `POST /api/agent-chat` 落地，详见 PROGRESS 第十三节 |
+| AgentService 第二期 2a（LangChain + Tool Calling，不含 RAG） | ✅ 完成 | Skill 经 `StructuredTool` 包装接入；前端 Agent toggle；`Message.metadata` JSON 列持久化 step_count/aborted/tool_calls。详见 PROGRESS 第十四节 |
+| AgentService 第二期 2b-i（RAG + 知识库管理） | ✅ 完成 | 本地 bge-small-zh + chromadb；KB CRUD + 文档上传/分块/检索；retrieve_notes 工厂 skill；普通 chat 静默注入、Agent 模式 ReAct 自主调用。后端 89 测试 / 前端 15 测试全过。Docker torch 烘焙 + CI 留尾巴。详见 PROGRESS 第十五节 |
+| AgentService 第二期 2b-ii（AgentTrace 面板） | ⏳ 计划已落地，见 11.5 | 2b-i 完成后开工 |
 
 ---
 
 ## 11. 未来开发计划
 
-### 11.1 跨平台兼容性检查
+### 11.1 跨平台兼容性检查 — ✅ 完成（2026-07-20）
 - 检查 Windows 平台 npm 包缺失问题（如 `@rollup/rollup-darwin-arm64` 等平台特定二进制）
 - 解决 Linux 平台无法下载依赖的问题（如 uv 安装、系统库缺失等）
 - 补充 CI 配置（如 GitHub Actions）做多平台验证
+- 落地：根 `.gitignore` + `frontend/.npmrc` + `pyproject.toml` `uvicorn[standard]` 拆 optional dep + `.github/workflows/ci.yml` 三平台 matrix。
 
-### 11.2 新增 AgentService 编排层
+### 11.2 新增 AgentService 编排层 — ✅ 完成（AgentService 第一期，2026-07-20）
 - **保持现有架构不变**：Adapter、ConversationService、Streaming 架构不动
 - 新增 `AgentService` 作为 Agent 编排层，**不让 LangChain 接管整个后端**
 - AgentService 位于 `backend/app/services/agent_service.py`，与 ConversationService 平级
 - 职责：接收用户意图 → 编排 Agent 执行流程 → 调用 Adapter 完成 LLM 调用 → 返回结果
+- 落地：纯文本 ReAct 循环，无工具调用，详见 PROGRESS 第十三节。
 
-### 11.3 在 AgentService 内部引入 LangChain/LangGraph
-- 在 AgentService 内部使用 LangChain/LangGraph，不污染外部架构
-- 负责：工具调用（Tool Calling）、RAG（检索增强生成）、多轮推理等能力
-- 保持 Adapter 层作为纯 LLM 调用抽象，AgentService 通过 Adapter 获取 LLM 响应
-- 确保 LangChain 的引入范围仅限于 AgentService 内部，不扩散到其他模块
+### 11.3 AgentService 第二期 2a：LangChain + Tool Calling — ✅ 完成（2026-07-20）
+- 在 AgentService 内部引入 LangChain/LangGraph，不污染外部架构
+  - 新增 `backend/app/services/langchain_adapter.py`：`AdapterChatModel(BaseChatModel)` 桥到现有 BaseAdapter，ModelConfig/vendor key 仍是唯一入口
+  - Skills 经 `_wrap_skill_as_tool` 包成 `StructuredTool` 暴露给 agent；`skills/base.py` 不感知 LangChain
+  - 工具调用走 ReAct prompt 注入（不依赖厂商 native tool_calls API）
+- 负责：工具调用（Tool Calling 部分）；RAG 推迟到 2b。
+- 落地：`Message.metadata` JSON 列；ChatChunk 加 `action`/`observation`/`warning` 类型；前端 InputArea 加 Agent toggle；详见 PROGRESS 第十四节。
+
+### 11.4 AgentService 第二期 2b-i：RAG + 知识库管理（计划已定，待开工）
+
+**目标**：在已有的 Skills + Tool Calling 框架之上，引入向量检索与知识库管理，让 Agent 能在多步推理中主动查询用户上传的 markdown 笔记；普通 chat 模式也能把 KB 命中段落自动注入上下文。本期不涉及 AgentTrace 面板（留 2b-ii）。
+
+**取舍已拍板**（详见第十五节执行记录时再展开）：
+
+| 决策点 | 选定方案 |
+|---|---|
+| 向量库 | `chromadb`（Python-native、磁盘持久化、跨平台一致） |
+| Embedding | 本地 `sentence-transformers` + `BAAI/bge-small-zh-v1.5`（512 维、中文笔记表现好、零网络成本） |
+| Chunking | `MarkdownHeaderTextSplitter` → `RecursiveCharacterTextSplitter`（chunk_size=800、overlap=100）兜底 |
+| KB 元数据持久化 | SQLAlchemy 表 `KnowledgeBase`/`KnowledgeDoc` + chromadb 纯向量索引，两轨并存 |
+| KB UI | `KnowledgeBaseManager` Modal（仿 `ModelManager` 风格）+ ChatHeader KB 下拉 select |
+| 上传格式 | 仅 `.md/.markdown/.txt`（与 PROGRESS"markdown 笔记检索"对齐，避免 PDF 噪声） |
+| RAG 触发 | 普通 chat 自动注入；Agent 模式经 `retrieve_notes` Skill 由 ReAct 自主调用 |
+| 检索算法 | 纯向量 top-K（无 BM25 hybrid，留实战验证再加） |
+| 处理模型 | 同步处理（本地工作台、单 KB 上传通常 < 5s）；异步化留 2b-ii |
+| 测试 | 单测 fake embedder；`@pytest.mark.slow` 标真模型 smoke，CI skip |
+
+#### 11.4.1 后端文件清单
+
+| 类型 | 路径 | 说明 |
+|---|---|---|
+| 改 | `backend/pyproject.toml` | 加 `chromadb>=0.5`、`langchain-chroma>=0.1`、`sentence-transformers>=2.7`、`rank-bm25`（先不加，留 2b-ii 视情况） |
+| 改 | `backend/app/config.py` + `.env.example` | 加 `embedding_model`、`chroma_persist_dir`、`kb_chunk_size`、`kb_chunk_overlap`、`kb_top_k`、`kb_min_score` |
+| 改 | `backend/app/models.py` | 加 `KnowledgeBase`（id/name/description/created_at/updated_at）与 `KnowledgeDoc`（id/kb_id/filename/sha256/text/created_at）表 |
+| 改 | `backend/main.py` + `tests/conftest.py` | 启动时 `create_all` 创建新表；lifespan 启动 `ChromaService` 单例 |
+| 新 | `backend/app/services/knowledge_service.py` | KnowledgeService：KB/doc CRUD、上传文本 → chunking → embedding → chromadb upsert；查询 `retrieve(kb_id, query, top_k, min_score)` |
+| 新 | `backend/app/services/embedding_service.py` | EmbeddingService：本地 `bge-small-zh-v1.5` 单例 + fake fallback（注入零向量，仅测试） |
+| 新 | `backend/app/skills/retrieve_notes.py` | `RetrieveNotesSkill`：`run(input, args={"kb_id": "...", "top_k": 4, "min_score": 0.3})`；通过 `KnowledgeService.retrieve` 返回拼接好的 markdown chunks |
+| 改 | `backend/app/skills/registry.py` | 注册 `retrieve_notes`，但**它依赖 request 上下文的 `kb_id`** —— 改造为工厂：`get_retrieve_notes_tool(kb_id)` 由 AgentService 在每次调用时构造 |
+| 改 | `backend/app/services/agent_service.py` | 收到 `request.rag_knowledge_base_id` 时把 `retrieve_notes` Skill 的 `kb_id` 通过闭包绑定暴露；其它 step 流程不变 |
+| 改 | `backend/app/routers/chat.py` | 若 `request.rag_knowledge_base_id` 非空：发模型前用 `KnowledgeService.retrieve` 取 top-K，拼到最近一条 user 消息前. **作为新增 chunk 段而非替换原内容** |
+| 改 | `backend/app/routers/agent.py` | 在调用 AgentService 前按 `request.rag_knowledge_base_id` 准备 `retrieve_notes` Skill 工具列表 |
+| 新 | `backend/app/routers/knowledge.py` | `GET/POST/DELETE /api/knowledge-bases`、`POST /api/knowledge-bases/{id}/documents`（multipart上传）、`GET …/documents`、`DELETE …/documents/{doc_id}` |
+| 改 | `backend/app/schemas.py` | `KnowledgeBase*` scheme、text 列表与上传响应 |
+| 新 | `backend/tests/test_knowledge_service.py` | fake embedder 覆盖：KB CRUD、上传 md → chunk 入 chromadb、retrieve top-K、删除 KB 联级清理 |
+| 新 | `backend/tests/test_retrieve_notes_skill.py` | 注入 fake KB + fake retrieval 验证 Skill 输出格式 |
+| 新 | `backend/tests/test_routers_knowledge.py` | API 端到端 |
+
+#### 11.4.2 前端文件清单
+
+| 类型 | 路径 | 说明 |
+|---|---|---|
+| 改 | `frontend/src/types/index.ts` | 新增 `KnowledgeBase`、`KnowledgeDoc` 接口；`ChatRequest.ragKnowledgeBaseId` 已存在不改动 |
+| 新 | `frontend/src/api/knowledge.ts` | `fetchKnowledgeBases/createKnowledgeBase/deleteKnowledgeBase/uploadDocument/listDocuments/deleteDocument` |
+| 改 | `frontend/src/store/workspaceStore.ts` | 新增 `selectedKbId`、`setSelectedKbId`；persist version 升到 5 |
+| 新 | `frontend/src/components/KnowledgeBaseManager.tsx` | 仿 `ModelManager.tsx` 风格的 Modal：KB 列表 + 创建表单 + 进入 KB 后的文档列表 + 上传/删除 |
+| 改 | `frontend/src/components/ChatHeader.tsx` | 「知识库」按钮变为打开 `KnowledgeBaseManager`；新增 KB 下拉 `<select>`（无 KB 时 disabled "--无--"）|
+| 改 | `frontend/src/hooks/useChatStream.ts` | 发送 chat 与 agent-chat 时附带 `ragKnowledgeBaseId: store.selectedKbId` |
+| 改 | `frontend/src/api/agent-chat.ts` + `chat.ts` | 已传 `rag_knowledge_base_id`，无需改动（仅类型对齐） |
+| 新 | `frontend/tests/components/KnowledgeBaseManager.test.tsx` | mock API：列表渲染、创建、上传文档、删除确认 |
+| 改 | `frontend/tests/hooks/useChatStream.test.ts` | 加 1 用例：选 KB 后 fetch body 含 `rag_knowledge_base_id` |
+
+#### 11.4.3 SSE / 协议变化
+- 普通 chat：当 KB 生效时**不发新 SSE 事件**——只是后端把 retrieved chunks 静默拼到 user 消息。
+- Agent 模式：`action` 事件已经有 `name` 字段；`retrieve_notes` 被调用时照常走 action/observation 事件，observation 内容是 retrieved chunks 的 markdown 摘要（每块标 `[来源: doc.md #heading]`）。
+
+#### 11.4.4 DB 迁移策略
+- 新表通过 `Base.metadata.create_all` 自动创建（与现有 tables 一致）。
+- 不引入 alembic：项目仍走"启动迁移 + ALTER TABLE 兼容旧库"路线。
+- 出厂首启：`workbench.db` 与 `chroma_persist_dir`（默认 `backend/.chroma`）都是首次运行时创建。
+
+#### 11.4.5 Docker 镜像影响
+- backend Dockerfile 需在 `uv sync` 后追加：
+  - `RUN uv pip install sentence-transformers` 安装 torch（约 +400MB）
+  - `RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('BAAI/bge-small-zh-v1.5')"` 拉模型到镜像内（避免首次启动下载等待）。
+- 用户首次启动本地 dev 时若未装模型，`EmbeddingService` 会捕获 `OSError` 走 FakeEmbedder 并记录 warning 日志——保证 RAG 在没网络/没装 torch 时不至于让后端起不来。
+
+#### 11.4.6 测试边界
+- **单元**：fake embedder 全覆盖 KB/doc CRUD 与 retrieve；不依赖真模型。
+- **slow**：`@pytest.mark.slow` + `pytest.ini` 注册 marker；CI 不跑；本地 `pytest -m slow` 手动验证 bge-small-zh 真实检索效果。
+- **前端**：vitest + RTL mock fetch 覆盖 Modal CRUD 与上传；不依赖 EffectsLibrary。
+
+#### 11.4.7 验证清单
+- `cd backend && uv sync --frozen --all-extras` 全过；`uv run pytest -q` → 51 + ~8 新增 = ~59 全过。
+- `cd frontend && npm run test && npm run build && npm run lint` 全过。
+- 手动：创建 KB「我的笔记」→ 上传 `notes.md` → ChatHeader 下拉选「我的笔记」→ 普通 chat 问笔记内容 → 验证回复引用；切换 Agent 模式 → 验证 `retrieve_notes` 工具被 agent 自主调用（trace 里出 `Action: retrieve_notes`）。
+
+### 11.5 AgentService 第二期 2b-ii：AgentTrace 面板（计划已定，2b-i 完成后开工）
+
+**目标**：把当前 ReAct 多步思考 + Action + Observation 直接堆在 `Message.thinking` 字段、复用 `ThinkingBlock` 渲染的简陋做法，升级为独立的 `<AgentTrace>` 组件——按 step 卡片化展示 thought / action / observation 三段，为后续检索结果（retrieved chunks）留展示槽位。同时把 SSE 协议从"扁平事件流"升级为"step-bounded 事件流"，让前端能按 step 渲染而非靠 `--- 第 N 步思考 ---` 文本分隔。
+
+**前提**：2b-i 完成后开工，可独立提交。
+
+#### 11.5.1 SSE 协议升级（向后兼容）
+
+新增三类事件，**保留** phase 2a 的扁平事件作为 fallback：
+
+| 事件 | 形态 | 用途 |
+|---|---|---|
+| `step_start` | `{type:"step_start", step:N, label:"第 N 步思考"}` | 前端插入新 step 卡片 |
+| `step_end` | `{type:"step_end", step:N, finish:"final\|tool\|max_steps\|error"}` | 前端标记卡片终止状态 |
+| `retrieved` | `{type:"retrieved", step:N, docs:[{doc,heading,score,text}]}` | 当 retrieved_notes 被调用时透传 top-K 块的元信息，2b-i 已隐式可拿（在 observation 里），这里改为结构化字段方便面板渲染 |
+
+`ChatChunk.type` 扩成 `Literal[..., "step_start", "step_end", "retrieved"]`。后端 `AgentService` 按 step boundary 显式 yield `step_start`/`step_end`，扁平的 `text`/`thinking`/`action`/`observation` 事件保留 `step` 字段，便于旧版前端继续工作。
+
+#### 11.5.2 后端改造
+
+| 类型 | 路径 | 说明 |
+|---|---|---|
+| 改 | `backend/app/services/agent_service.py` | 在每个 step 循环开始/结束 yield `step_start`/`step_end`；retrieve_notes 调用时把 chunks 同步 yield `retrieved` 事件；`Metadata.tool_calls` 增加结构化 `observation.shape = "markdown_retrieval"` 等 |
+| 改 | `backend/app/skills/retrieve_notes.py` | `SkillResult.metadata` 增加 `chunks: [{doc, heading, score, text}]` 结构化字段 |
+| 改 | `backend/app/schemas.py` | `ChatChunk.type` 扩 `step_start`/`step_end`/`retrieved`；新增 `ChatChunk.docs` 字段 |
+| 改 | `backend/tests/test_agent_service_v2.py` | 加 4 个用例：step_start/end 在每个 step 收到一次、retrieved 事件携带 chunks、扁平事件保留向后兼容、abort 后有 step_end |
+
+#### 11.5.3 前端改造
+
+| 类型 | 路径 | 说明 |
+|---|---|---|
+| 新 | `frontend/src/components/AgentTrace.tsx` | 接收 step events 数组，渲染卡片列表：每卡片 Header（`第 N 步`徽标 + finish badge）+ Body（thought 区折叠 / action 区显示 tool 名 + input / observation 区显示 retrieved_chunks 列表 + 兜底文本） |
+| 改 | `frontend/src/types/index.ts` | `ChatChunk` 加 `step_start`/`step_end`/`retrieved` 类型；新增 `AgentStep`、`AgentTraceData` 类型 |
+| 改 | `frontend/src/api/agent-chat.ts` | 回调接口补 `onStepStart`/`onStepEnd`/`onRetrieved` |
+| 改 | `frontend/src/hooks/useChatStream.ts` | agent 模式收到 step events 时累积进 `assistant.metadata.steps` 而非 thinking 字段；`Message.thinking` 兜底只走扁平回退 |
+| 改 | `frontend/src/store/workspaceStore.ts` | `appendToAssistantThinking` 保留但 agent 模式优先走新 action `appendAgentStep` / `completeAgentStep` |
+| 改 | `frontend/src/components/MessageItem.tsx` | assistant 消息 + agent 模式 → 渲染 `<AgentTrace steps={message.metadata.steps}>` 替代 `<ThinkingBlock>`；普通 chat 仍用 ThinkingBlock |
+| 改 | `frontend/src/api/chat.ts` | 普通 chat 路径不变；KB 注入仍只影响 user 消息文本 |
+| 新 | `frontend/tests/components/AgentTrace.test.tsx` | 渲染 step_start/action/observation/retrieved/end 卡片全 case |
+| 改 | `frontend/tests/hooks/useChatStream.test.ts` | 加 3 个用例：step_start/end 分发、retrieved chunks 入 metadata.steps、abort 后 step_end 状态值 |
+
+#### 11.5.4 数据模型兼容
+- `Message.metadata_` JSON 列已存在；2b-ii 仅扩 `metadata_.steps: AgentStep[]` 数组结构。
+- 2a 数据（`metadata_.tool_calls`、`step_count`）依然可读；前端可从 `metadata_.steps` 优先读取，旧数据兜底用 `metadata_.tool_calls + thinking` 字段拼回。
+
+#### 11.5.5 向后兼容策略
+- 后端同时发扁平 + 结构化事件（feature flag by `settings.agent_structured_events`？还是无脑同时发？）—— 推荐**无脑同时发**：扁平事件保留 `step:N` 字段，结构化事件额外追加；旧前端忽略新事件不破。
+- 前端优先走结构化事件渲染 `<AgentTrace>`；当用户的 `Message.metadata_.steps` 为空时回退到现 ThinkingBlock 渲染（兼容历史 DB 行）。
+
+#### 11.5.6 验证清单
+- `cd backend && uv run pytest -q` → 在 2b-i 后总数再加 ~4 新增用例。
+- `cd frontend && npm run test && npm run build && npm run lint` 全过。
+- 手动：Agent 模式下连发多个 Action 步骤，UI 展示卡片化轨迹；retrieved chunks 渲染为「来源：doc.md #heading」可折叠卡片。
+
+### 11.6 第三期前瞻（不在本期范围）
+- 厂商原生 tool-calling API 接入（OpenAI `tool_calls` delta、Anthropic `tools` 参数）：替换 ReAct prompt 注入。
+- 多用户隔离 + 权限。
+- 异步化文档处理（上传文档后立即返回 doc_id，后台 chunking embedding）。
+- 混合检索（BM25 + 向量 ensemble）。
+- 知识库 RAG over PDF/DOCX 放开。

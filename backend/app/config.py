@@ -51,6 +51,18 @@ class Settings(BaseSettings):
     # Database
     database_url: str = "sqlite+aiosqlite:///./workbench.db"
 
+    # AgentService phase 2b-i — RAG / knowledge base knobs.
+    # Embedding uses local sentence-transformers + bge-small-zh-v1.5; if torch
+    # or the model is unavailable, EmbeddingService falls back to a FakeEmbedder
+    # no-op (uploads 503, retrieve returns []). chroma_persist_dir is resolved
+    # against the backend root in KnowledgeService to avoid CWD dependence.
+    embedding_model: str = "BAAI/bge-small-zh-v1.5"
+    chroma_persist_dir: str = ".chroma"
+    kb_chunk_size: int = 800
+    kb_chunk_overlap: int = 100
+    kb_top_k: int = 4
+    kb_min_score: float = 0.3
+
     @property
     def vendor_credentials(self) -> dict[str, tuple[str, str]]:
         """Return vendor -> (api_key, base_url) mapping."""

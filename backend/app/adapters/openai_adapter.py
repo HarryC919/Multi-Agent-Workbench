@@ -19,13 +19,24 @@ class OpenAIAdapter(BaseAdapter):
         messages: list[dict[str, str]],
         model: str,
         thinking: bool = False,
+        *,
+        temperature: float | None = None,
+        top_p: float | None = None,
         **kwargs,
     ) -> AsyncIterator[StreamChunk]:
-        params = {
+        params: dict = {
             "model": model,
             "messages": messages,
             "stream": True,
         }
+        # Reasoning-class models (o1/o3, deepseek-reasoner, etc.) reject
+        # temperature/top_p; we forward the params only when explicitly set
+        # by the caller (AgentService) — the default `None` leaves the model's
+        # own defaults in place.
+        if temperature is not None:
+            params["temperature"] = temperature
+        if top_p is not None:
+            params["top_p"] = top_p
 
         async with self.client.stream(
             "POST",

@@ -91,12 +91,13 @@ async def _fetch_message(message_id: str) -> Message | None:
         return result.scalar_one_or_none()
 
 
+from app.services.agent_service import _extract_final_answer as _efa
+
 def test_extract_final_answer():
-    svc = AgentService.__new__(AgentService)  # bypass __init__ to avoid DB
-    assert svc._extract_final_answer("Thought text\nFinal Answer: 42") == "42"
-    assert svc._extract_final_answer("Final Answer:   spaced\ntext") == "spaced\ntext"
-    assert svc._extract_final_answer("no answer here") is None
-    assert svc._extract_final_answer("Final Answer:") == ""
+    assert _efa("Thought text\nFinal Answer: 42") == "42"
+    assert _efa("Final Answer:   spaced\ntext") == "spaced\ntext"
+    assert _efa("no answer here") is None
+    assert _efa("Final Answer:") == ""
 
 
 @pytest.mark.asyncio

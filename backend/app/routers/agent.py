@@ -14,6 +14,9 @@ from app.database import AsyncSessionLocal
 from app.schemas import AgentChatRequest
 from app.services.agent_service import AgentService
 from app.services.conversation_service import ConversationService
+from app.services.knowledge_service import KnowledgeService
+from app.skills import iter_skills
+from app.skills.retrieve_notes import get_retrieve_notes_skill
 
 router = APIRouter()
 
@@ -48,7 +51,25 @@ async def generate_agent_stream(request: AgentChatRequest):
             yield f"data: {json.dumps({'type': 'error', 'message': str(exc)})}\n\n"
             return
 
-        async for line in agent_service.stream_agent_chat(request, adapter, conversation):
+        # Phase 2a: expose all registered skills as LangChain tools. The
+        # request may whitelist a subset via enable_skills (handled by the
+        # service). Skills filtered out are simply not provided here.
+        skills = list(iter_skills())
+
+        # Phase 2b-i: when a knowledge base is selected, build a per-request
+        # retrieve_notes skill bound to that KB and append it. It is always-on
+        # (the user explicitly armed RAG by selecting a KB), so if the request
+        # carries an enable_skills whitelist, also append "retrieve_notes" to
+        # keep it from being filtered out by AgentService._select_tools.
+        if request.rag_knowledge_base_id:
+            kb_svc = KnowledgeService(db)
+            skills.append(
+                get_retrieve_notes_skill(request.rag_knowledge_base_id, kb_svc)
+            )
+            if isinstance(request.enable_skills, list) and "retrieve_notes" not in request.enable_skills:
+                request.enable_skills.append("retrieve_notes")
+
+        async for line in agent_service.stream_agent_chat(request, adapter, conversation, skills=skills):
             yield line
 
 

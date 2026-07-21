@@ -21,6 +21,21 @@ dependencies = [
     "watchfiles>=0.21.0; platform_system != 'Windows'",
     "httptools>=0.6.4; platform_system != 'Windows'",
     "uvloop>=0.21.0; platform_system != 'Windows'",
+    # AgentService phase 2a — LangGraph runtime + LangChain core. We do not
+    # pull `langchain-openai` / `langchain-anthropic`: our AdapterChatModel
+    # bridges to the existing BaseAdapter so ModelConfig/vendor keys remain
+    # the single source of truth.
+    "langchain-core>=0.3,<0.4",
+    "langgraph>=0.2,<0.3",
+    # AgentService phase 2b-i — RAG + knowledge base. MarkdownHeaderText/Recursive
+    # splitters live in langchain-text-splitters (NOT langchain-core). chromadb is
+    # the on-disk vector store; langchain-chroma kept for future wrapper use.
+    # sentence-transformers pulls torch (~2GB) — lazy-imported in EmbeddingService
+    # so dev/tests run without it via FakeEmbedder no-op fallback.
+    "langchain-text-splitters>=0.3,<0.4",
+    "chromadb>=0.5",
+    "langchain-chroma>=0.1",
+    "sentence-transformers>=2.7",
 ]
 
 [dependency-groups]
@@ -34,3 +49,8 @@ dev = [
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
 testpaths = ["tests"]
+# AgentService 2b-i: real-model RAG smoke tests need torch + bge-small-zh
+# installed locally; CI skips them via `-m "not slow"`.
+markers = [
+    "slow: real-model RAG smoke tests (CI-skipped, run locally with `pytest -m slow`)",
+]

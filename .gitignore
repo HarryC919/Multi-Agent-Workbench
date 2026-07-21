@@ -31,6 +31,8 @@ dist/
 *.sqlite3
 backend/test_workbench.db
 frontend/workbench.db
+backend/workbench.db-shm
+backend/workbench.db-wal
 
 # Test / Coverage
 .pytest_cache/

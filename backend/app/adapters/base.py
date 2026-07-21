@@ -21,6 +21,9 @@ class BaseAdapter(ABC):
         messages: list[dict[str, str]],
         model: str,
         thinking: bool = False,
+        *,
+        temperature: float | None = None,
+        top_p: float | None = None,
         **kwargs,
     ) -> AsyncIterator[StreamChunk]:
         pass

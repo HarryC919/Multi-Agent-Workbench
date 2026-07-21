@@ -4,6 +4,7 @@ import { nanoid } from 'nanoid'
 import type {
   Conversation,
   ConversationDetail,
+  KnowledgeBase,
   Message,
   ModelConfig,
   UploadedFile,
@@ -21,6 +22,7 @@ interface WorkspaceState {
   attachedFiles: UploadedFile[]
   selectedModel: string
   thinkingEnabled: boolean
+  agentMode: boolean
 
   // Streaming state
   isStreaming: boolean
@@ -28,6 +30,10 @@ interface WorkspaceState {
   // Models
   models: ModelConfig[]
   isLoadingModels: boolean
+
+  // Knowledge bases (phase 2b-i). selectedKbId '' sentinel = no KB selected.
+  knowledgeBases: KnowledgeBase[]
+  selectedKbId: string
 
   // Actions
   setActive: (id: string | null) => void
@@ -39,6 +45,7 @@ interface WorkspaceState {
   setInputText: (text: string) => void
   setSelectedModel: (model: string) => void
   setThinkingEnabled: (value: boolean) => void
+  setAgentMode: (value: boolean) => void
   attachFile: (file: UploadedFile) => void
   removeFile: (fileId: string) => void
   clearInput: () => void
@@ -51,6 +58,10 @@ interface WorkspaceState {
   addModel: (model: ModelConfig) => void
   updateModel: (model: ModelConfig) => void
   removeModel: (modelId: string) => void
+  loadKnowledgeBases: () => Promise<void>
+  addKnowledgeBase: (kb: KnowledgeBase) => void
+  removeKnowledgeBase: (kbId: string) => void
+  setSelectedKbId: (kbId: string) => void
 }
 
 export const useWorkspaceStore = create<WorkspaceState>()(
@@ -65,11 +76,15 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       attachedFiles: [],
       selectedModel: '',
       thinkingEnabled: false,
+      agentMode: false,
 
       isStreaming: false,
 
       models: [],
       isLoadingModels: false,
+
+      knowledgeBases: [],
+      selectedKbId: '',
 
       setActive: (id) => {
         set({ activeId: id, currentConversation: null })
@@ -139,6 +154,12 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       setSelectedModel: (model) => set({ selectedModel: model }),
 
       setThinkingEnabled: (value) => set({ thinkingEnabled: value }),
+
+      setAgentMode: (value) =>
+        // Agent 模式走 ReAct 多步推理，思考链是推理过程的必要输出——开启时
+        // 自动联动深度思考，避免用户忘了开导致 trace 不可见。关闭时不强制
+        // 改回 thinkingEnabled，以免覆盖用户随后的手动选择。
+        set(value ? { agentMode: true, thinkingEnabled: true } : { agentMode: false }),
 
       attachFile: (file) =>
         set((state) => ({ attachedFiles: [...state.attachedFiles, file] })),
@@ -255,22 +276,53 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         set((state) => ({
           models: state.models.filter((m) => m.modelId !== modelId),
         })),
+
+      loadKnowledgeBases: async () => {
+        const { fetchKnowledgeBases } = await import('@/api/knowledge')
+        const knowledgeBases = await fetchKnowledgeBases()
+        set((state) => ({
+          knowledgeBases: knowledgeBases || [],
+          // Clear selection if the selected KB no longer exists.
+          selectedKbId:
+            state.selectedKbId &&
+            !(knowledgeBases || []).some((k) => k.id === state.selectedKbId)
+              ? ''
+              : state.selectedKbId,
+        }))
+      },
+
+      addKnowledgeBase: (kb) =>
+        set((state) => ({ knowledgeBases: [...state.knowledgeBases, kb] })),
+
+      removeKnowledgeBase: (kbId) =>
+        set((state) => ({
+          knowledgeBases: state.knowledgeBases.filter((k) => k.id !== kbId),
+          selectedKbId: state.selectedKbId === kbId ? '' : state.selectedKbId,
+        })),
+
+      setSelectedKbId: (kbId) => set({ selectedKbId: kbId }),
     }),
     {
       name: 'chat-workbench-storage',
-      version: 3,
+      version: 5,
       partialize: (state) => ({
         selectedModel: state.selectedModel,
         thinkingEnabled: state.thinkingEnabled,
+        agentMode: state.agentMode,
+        selectedKbId: state.selectedKbId,
       }),
       skipHydration: true,
       merge: (persistedState, currentState) => {
-        // Merge persisted fields into the full initial state to avoid undefined arrays
+        // Merge persisted fields into the full initial state to avoid undefined arrays.
+        // NOTE: each persisted field must be listed here explicitly — the spread
+        // alone would drop new fields (selectedKbId) from older persisted blobs.
         const persisted = (persistedState || {}) as Partial<WorkspaceState>
         return {
           ...currentState,
           selectedModel: persisted.selectedModel ?? currentState.selectedModel,
           thinkingEnabled: persisted.thinkingEnabled ?? currentState.thinkingEnabled,
+          agentMode: persisted.agentMode ?? currentState.agentMode,
+          selectedKbId: persisted.selectedKbId ?? currentState.selectedKbId,
         }
       },
     },

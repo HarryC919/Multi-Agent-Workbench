@@ -25,24 +25,32 @@ class ChatRequest(BaseModel):
 
 
 class AgentChatRequest(ChatRequest):
-    """Request body for `/api/agent-chat` (AgentService phase 1).
+    """Request body for `/api/agent-chat` (AgentService phase 2a).
 
-    Inherits all ChatRequest fields. Adds knobs for the ReAct loop; the
-    step / final temperature fields are accepted for forward-compat but are
-    not yet forwarded to adapters (adapters do not accept a temperature
-    argument as of this phase).
+    Inherits all ChatRequest fields. Adds knobs for the ReAct loop. The
+    step / final temperature fields are now forwarded to adapters (phase 2a
+    wired temperature/top_p through BaseAdapter.stream_chat).
+
+    ``enable_skills`` controls which Skills are exposed to the LangGraph
+    agent as tools. ``None`` = use all registered skills; an explicit list
+    acts as a whitelist (names not in the registry are silently ignored so
+    a frontend stale-config doesn't 500 the request).
     """
 
     max_steps: int = 8
     step_temperature: float | None = None
     final_temperature: float | None = None
+    enable_skills: list[str] | None = None
 
 
 class ChatChunk(BaseModel):
-    type: Literal["text", "thinking", "done", "error", "warning"]
+    type: Literal["text", "thinking", "done", "error", "warning", "action", "observation"]
     content: str | None = None
     finish_reason: str | None = None
     message: str | None = None
+    # Fields used by the phase 2a action / observation events.
+    name: str | None = None
+    step: int | None = None
 
 
 class ConversationCreate(BaseModel):
@@ -74,9 +82,34 @@ class MessageOut(BaseModel):
     thinking: str = ""
     model: str | None = None
     status: str
+    # AgentService phase 2a: per-agent metadata (step_count, aborted flag,
+    # tool_calls transcript). Plain chat messages have an empty dict.
+    # The ORM attribute is named ``metadata_`` (SQLAlchemy reserves
+    # ``metadata``); the validator below bridges the two so the API field
+    # stays ``metadata`` for frontend consumers.
+    metadata: dict = {}
     created_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _metadata_alias(cls, data: object) -> object:
+        if isinstance(data, dict):
+            return data
+        # ORM object: copy metadata_ → metadata for the serializer.
+        meta = getattr(data, "metadata_", None) or {}
+        return {
+            "id": getattr(data, "id"),
+            "conversation_id": getattr(data, "conversation_id"),
+            "role": getattr(data, "role"),
+            "content": getattr(data, "content"),
+            "thinking": getattr(data, "thinking", ""),
+            "model": getattr(data, "model", None),
+            "status": getattr(data, "status"),
+            "metadata": meta,
+            "created_at": getattr(data, "created_at"),
+        }
 
 
 class UploadedFileOut(BaseModel):
@@ -156,6 +189,60 @@ class ModelConfigOut(BaseModel):
                 "updated_at": getattr(data, "updated_at"),
             }
         return data
+
+
+# ---------------------------------------------------------------------------
+# AgentService phase 2b-i — knowledge base / RAG schemas.
+# Mirrors the ModelConfig* style (Create/Update/Out split, from_attributes).
+# ---------------------------------------------------------------------------
+
+
+class KnowledgeBaseCreate(BaseModel):
+    name: str
+    description: str = ""
+
+
+class KnowledgeBaseUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+
+
+class KnowledgeBaseOut(BaseModel):
+    id: str
+    name: str
+    description: str = ""
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class KnowledgeDocOut(BaseModel):
+    """Document metadata. Deliberately omits ``text`` — the list endpoint
+    must not dump full document bodies, only metadata for the manager UI."""
+
+    id: str
+    kb_id: str
+    filename: str
+    sha256: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DocumentUploadResponse(BaseModel):
+    doc_id: str
+    filename: str
+    chunks: int
+    deduplicated: bool = False
+
+
+class RetrievedChunk(BaseModel):
+    doc_id: str
+    filename: str
+    heading: str = ""
+    score: float
+    text: str
 
 
 # Resolve forward reference

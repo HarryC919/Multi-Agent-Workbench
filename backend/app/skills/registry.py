@@ -35,4 +35,13 @@ def get_skill(name: str) -> Skill | None:
     return _REGISTRY.get(name)
 
 
-__all__ = ["list_skills", "get_skill", "SkillResult"]
+def iter_skills() -> list[Skill]:
+    """Return all registered Skill instances.
+
+    AgentService phase 2a uses this to wrap each Skill as a LangChain tool
+    for the LangGraph ``create_react_agent`` executor.
+    """
+    return list(_REGISTRY.values())
+
+
+__all__ = ["list_skills", "get_skill", "iter_skills", "SkillResult"]

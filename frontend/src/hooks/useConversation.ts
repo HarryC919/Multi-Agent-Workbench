@@ -13,6 +13,8 @@ export function useConversation() {
         await store.loadConversations()
         if (cancelled) return
         await store.loadModels()
+        if (cancelled) return
+        await store.loadKnowledgeBases()
       } catch (error) {
         if (cancelled) return
         useToastStore

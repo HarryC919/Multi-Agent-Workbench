@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
-import { Paperclip, Send, Square, X, Brain } from 'lucide-react'
+import { Paperclip, Send, Square, X, Brain, Zap } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { uploadFile } from '@/api/upload'
 import { useToastStore } from '@/store/toastStore'
@@ -30,10 +30,12 @@ interface InputAreaProps {
   models: ModelConfig[]
   selectedModel: string
   thinkingEnabled: boolean
+  agentMode: boolean
   attachedFiles: UploadedFile[]
   isStreaming: boolean
   onModelChange: (modelId: string) => void
   onThinkingToggle: (value: boolean) => void
+  onAgentModeToggle: (value: boolean) => void
   onAttachFile: (file: UploadedFile) => void
   onRemoveFile: (fileId: string) => void
   onSend: (content: string) => void
@@ -44,10 +46,12 @@ export function InputArea({
   models = [],
   selectedModel,
   thinkingEnabled,
+  agentMode,
   attachedFiles,
   isStreaming,
   onModelChange,
   onThinkingToggle,
+  onAgentModeToggle,
   onAttachFile,
   onRemoveFile,
   onSend,
@@ -181,6 +185,21 @@ export function InputArea({
             <Brain className={cn('h-3.5 w-3.5', thinkingEnabled && 'fill-blue-100 dark:fill-blue-100')} />
             深度思考
           </button>
+
+          <button
+            type="button"
+            onClick={() => onAgentModeToggle(!agentMode)}
+            className={cn(
+              'flex h-8 items-center gap-1 rounded-md border px-2 text-xs font-medium transition-colors',
+              agentMode
+                ? 'border-amber-500 bg-amber-50 text-amber-700 dark:border-amber-400 dark:bg-amber-900/30 dark:text-amber-300'
+                : 'border-input bg-background text-muted-foreground hover:border-amber-400 hover:text-amber-600',
+            )}
+            title={agentMode ? '关闭 Agent 模式' : '开启 Agent 模式（多步推理 + 工具）'}
+          >
+            <Zap className={cn('h-3.5 w-3.5', agentMode && 'fill-amber-200 dark:fill-amber-700')} />
+            Agent
+          </button>
         </div>
 
         {isStreaming ? (
@@ -195,6 +214,12 @@ export function InputArea({
           </Button>
         )}
       </div>
+
+      {agentMode && (
+        <p className="mt-2 text-[11px] text-muted-foreground">
+          Agent 模式：模型可分步推理并调用工具后给出最终回复。每步思考与工具调用过程会显示在「思考过程」中。
+        </p>
+      )}
     </div>
   )
 }

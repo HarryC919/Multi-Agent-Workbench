@@ -1,6 +1,6 @@
 # 项目进度跟踪
 
-> 最后更新：2026-07-20
+> 最后更新：2026-07-20（AgentService phase 2a）
 
 ## 一、总体状态
 
@@ -250,7 +250,7 @@
 - [x] **前端关键 hook 测试**：新增 `vitest` + `@testing-library/react` + `jsdom`；`frontend/tests/hooks/{useChatStream,useConversation}.test.ts` 7 个用例覆盖流式 chunk 拼接 / done / error / abort / onFinally / 装载会话与模型。
 - [x] **Skills 挂载开发**：新增 `backend/app/skills/` 包（`base.py` Skill Protocol、`registry.py` 启动扫描、`echo.py` + `current_time.py` 示例）；重写 `routers/skills.py` 为 `{status,skill,output,metadata,message}` 统一信封；新增 6 个 `test_skills.py` 用例。
 - [x] **多轮推理（AgentService 第一期）**：新增 `backend/app/services/agent_service.py` 编排层，与 `conversation_service.py` 平级，仅支持多轮推理（ReAct 思考链），**不含 tool calling / RAG**，保持现有 Adapter + Streaming 架构不动。详见第十三节工作记录。
-- [ ] **AgentService 第二期**：在 AgentService 内部引入 LangChain/LangGraph（范围严格限制在该模块内），叠加 **Tool Calling** 与 **RAG**（markdown 笔记检索）能力；Skills 挂载可在此之后接入。
+- [~] **AgentService 第二期（2a：LangChain + Tool Calling，不含 RAG）**：完成 LangChain/LangGraph 引入、Skill → LangChain Tool 桥、temperature 透传到 adapter、SSE `action`/`observation`/`warning` 事件、`Message.metadata` JSON 列持久化 step_count/aborted/tool_calls、前端 Agent 模式 toggle。详见第十四节工作记录。**2b（RAG + 知识库 UI + Agent 轨迹面板）仍待启动。**
 - [ ] **AgentService 第二期**：在 AgentService 内部引入 LangChain/LangGraph（范围严格限制在该模块内），叠加 **Tool Calling** 与 **RAG**（markdown 笔记检索）能力；Skills 挂载可在此之后接入。
 
 ---
@@ -405,8 +405,147 @@
 - **无 RAG**：第二期补。
 - **abort 不带 metadata**：DB 未新增字段；非零 cost 留到第二期再决定是否扩 schema。
 
-### 未启动（第二期）
+### 未启动（2b）
 
-- 引入 LangChain/LangGraph（范围严格限制在 `agent_service.py` 内部）。
-- Tool Calling + RAG（markdown 笔记检索）。
-- 前端 Agent 模式 UI 与轨迹面板。
+- 引入向量库 + RAG（markdown 笔记检索）。
+- 知识库前端入口与 Agent 轨迹面板组件。
+- 厂商原生 tool-calling API（OpenAI tool_calls delta / Anthropic tools）—— 2a 仍走 ReAct prompt 注入。
+
+---
+
+## 十四、本次工作记录（AgentService 2a：LangChain + Tool Calling，2026-07-20）
+
+落地第十三节中划为 2a 的子集：在不破坏现有 Adapter/ModelConfig 单一入口的前提下，把 LangChain/LangGraph 引入 `agent_service.py` 内部，让模型可以真实调用 Skills 暴露的工具，并补上前端 Agent 模式入口。RAG 与轨迹面板延后到 2b。
+
+### 改动文件
+
+- 依赖
+    - [backend/pyproject.toml](backend/pyproject.toml)：新增 `langchain-core>=0.3,<0.4` 与 `langgraph>=0.2,<0.3`。**不引** `langchain-openai`/`langchain-anthropic`：用自家的 `AdapterChatModel` 桥到现有 BaseAdapter，绕开"装第二个 LLM 客户端栈、重复配 key"的退化。
+- Adapter 层扩 temperature（让 Agent 步级温度真正发到模型）
+    - [backend/app/adapters/base.py](backend/app/adapters/base.py)：`stream_chat` 签名加 `temperature: float | None = None`、`top_p: float | None = None` 命名关键字。
+    - [backend/app/adapters/openai_adapter.py](backend/app/adapters/openai_adapter.py)：仅在 `temperature/top_p != None` 时注入 params，保留推理模型（o1/o3/deepseek-reasoner）不接温度的默认行为。
+    - [backend/app/adapters/anthropic_adapter.py](backend/app/adapters/anthropic_adapter.py)：同上策略，注入 `payload["temperature"]`、`payload["top_p"]`。
+    - [backend/app/adapters/gemini_adapter.py](backend/app/adapters/gemini_adapter.py)：注入到 `generationConfig.temperature`/`topP`。
+- DB schema 扩一项
+    - [backend/app/models.py](backend/app/models.py)：`Message` 新增 `metadata_` 字段，类型 `JSON`（SQLite 存 TEXT），默认空 dict。属性名带下划线避开 SQLAlchemy 保留字 `metadata`。
+    - [backend/main.py](backend/main.py) + [backend/tests/conftest.py](backend/tests/conftest.py)：lifespan 与测试 fixture 各加 `ALTER TABLE messages ADD COLUMN metadata TEXT DEFAULT '{}'` 兼容迁移。
+- Schema
+    - [backend/app/schemas.py](backend/app/schemas.py)：
+        - `ChatChunk.type` 扩 `Literal[..., "warning", "action", "observation"]`；新增 `name`/`step`/`input`/`maxSteps` 字段。
+        - `AgentChatRequest` 新增 `enable_skills: list[str] | None`（None=全部注册 skill；显式列表是白名单）。
+        - `MessageOut` 增加 `metadata: dict = {}` 字段，并用 `@model_validator(mode="before")` 把 ORM 的 `metadata_` 别名映射成 API 字段 `metadata`，避免前端拿到 SQLAlchemy 的保留字属性。
+- Skills 暴露给 Agent
+    - [backend/app/skills/registry.py](backend/app/skills/registry.py) + [backend/app/skills/__init__.py](backend/app/skills/__init__.py)：新增 `iter_skills()` 返回所有 `Skill` 实例。
+- LangChain 适配层
+    - [backend/app/services/langchain_adapter.py](backend/app/services/langchain_adapter.py)（新增）：`AdapterChatModel(BaseChatModel)`。实现 `_agenerate` + `_astream`（async 路径，LangGraph 走的就是这条）；同步 `_generate`/`_stream` 走 `concurrent.futures.ThreadPoolExecutor` 包装，仅供 sync 回退场景。`bind_tools` **显式 NotImplemented**：第二期 2a 仍走 ReAct prompt 注入，不依赖厂商原生 tool_calls API。`thinking` 字段塞到 `AIMessage.additional_kwargs["thinking"]`（langchain-core 0.3 把 `additional_metadata` 移除了，沿用坑见第十三节）。
+- 重写 AgentService
+    - [backend/app/services/agent_service.py](backend/app/services/agent_service.py)：
+        - 仍保留 TextReAct 解析（`Action:` / `Action Input:` / `Final Answer:`），不依赖 native tool_calls。
+        - 每步发起用 `chat_model._astream(messages)` 替代直接 await `adapter.stream_chat`；LangChain `AIMessageChunk` 流式累积。
+        - Skills 通过 `_wrap_skill_as_tool` 包成 `StructuredTool`，agent 循环里 `await tool.ainvoke({"input": action_input})` 执行——错误走 error envelope 而非抛异常，loop 不中断。
+        - SSE 协议扩三类：`{"type":"action","name","input","step"}`、`{"type":"observation","name","content","step"}`、`{"type":"warning","message":"max-steps-exceeded","max_steps"}`。
+        - 步计数策略改为每步开始递增 `step_count`，warning 触发条件改为 `step_count >= max_steps`；后路径（cancel/error）依赖 `step_count` 的语义自洽。
+        - `Message.metadata_` JSON 列落 `{step_count, aborted, tool_calls: [{name, step, input, output}]}`；正常运行也是 `{step_count: N, aborted: false, tool_calls: [...]}`。
+- ReAct 模板更新
+    - [backend/app/services/prompts/react_system.txt](backend/app/services/prompts/react_system.txt)：新增 `{tools_section}` 占位符；运行时由 AgentService 用注册 skill 动态注入；保留 `Action: none` 与 `Final Answer:` 终止符语义。
+- Router
+    - [backend/app/routers/agent.py](backend/app/routers/agent.py)：构造时 `iter_skills()` 传入 AgentService，由 `enable_skills` 实际过滤。
+- 测试
+    - [backend/tests/test_agent_service_v2.py](backend/tests/test_agent_service_v2.py)（新增，9 个用例）：
+        - 单步 Final Answer、两步带 `echo` 工具调用、未知工具→observation+续推、`max_steps=2` 触发 warning、adapter 抛错→SSE error + DB metadata.error、abort→metadata.aborted=true + status=error 且无 done/error 事件、单元函数 `_parse_action` / `_extract_final_answer` / `_wrap_skill_as_tool` 校验、`/api/agent-chat` 路由仍注册。
+        - 用 `_ScriptedChatModel(BaseChatModel)` 替代第一期的 `_ScriptedAdapter`，更贴近真实 LangGraph 路径。
+    - [backend/tests/test_agent_service.py](backend/tests/test_agent_service.py)：保留作为第一期 ReAct 解析回归保护；`test_extract_final_answer` 改为 import module-level `_extract_final_answer` 函数。
+- 前端
+    - [frontend/src/types/index.ts](frontend/src/types/index.ts)：`Message` 加 `metadata?: Record<string, unknown>`；`ChatChunk.type` 扩 `warning`/`action`/`observation` 与新字段；新增 `AgentChatRequest` 接口。
+    - [frontend/src/api/agent-chat.ts](frontend/src/api/agent-chat.ts)（新增）：`sendAgentChatStream` 与 `chat.ts` 同形态，新增 `onAction` / `onObservation` / `onWarning` 回调。
+    - [frontend/src/api/chat.ts](frontend/src/api/chat.ts)：补 `warning` 事件分发到 `onWarning`，保持与 agent 路径行为一致。
+    - [frontend/src/hooks/useChatStream.ts](frontend/src/hooks/useChatStream.ts)：`sendMessage` 内根据 `useWorkspaceStore.getState().agentMode` 分流到 `/api/agent-chat`；ReAct viewport（Action/Observation 行）写入 `assistant.thinking` 字段，复用现有 `ThinkingBlock` 组件无需新组件。
+    - [frontend/src/components/InputArea.tsx](frontend/src/components/InputArea.tsx)：新增 `agentMode` prop 与「Agent」toggle 按钮（闪电图标 `Zap`，琥珀色 active 态），与「深度思考」并列；开启时下方显示一行提示文案。
+    - [frontend/src/components/WorkspaceLayout.tsx](frontend/src/components/WorkspaceLayout.tsx)：把 `agentMode` 与 `onAgentModeToggle` 接到 InputArea。
+    - [frontend/src/store/workspaceStore.ts](frontend/src/store/workspaceStore.ts)：新增 `agentMode` + `setAgentMode`；persist version 升到 4，partialize 把 agentMode 加入持久化字段。
+    - [frontend/tests/hooks/useChatStream.test.ts](frontend/tests/hooks/useChatStream.test.ts)：新增 2 个用例覆盖 agent 路径——fetch URL 切换到 `/api/agent-chat`、SSE action/observation 走 thinking 字段、error 事件正确写入 `**Agent Error**`。
+
+### 验证
+
+- 后端：`cd backend && uv run pytest -q` → **51 passed**（42 + 9 新增 v2 用例）。
+- 前端：`cd frontend && npm run test` → **9 passed**（原 7 + 2 新 agent 用例）；`npm run build` 成功；`npm run lint` 无新告警。
+- 手动端到端：未跑（需启动后端 + 真实 key；可用 `scripts/test-agent-chat.py` 自测）。
+
+### 已知限制（按设计约束，非缺陷）
+
+- **RAG 未做**：留 2b，会一起补向量库选型、知识库 UI、Agent 轨迹面板组件。
+- **不接厂商原生 tool_calls**：第二期仍用 ReAct prompt 注入。原 OpenAI/Anthropic 的 function-calling API 会另起 Phase 3 再接。`AdapterChatModel.bind_tools` 已显式 raise 提示。
+- **Agent 轨迹不是独立 UI**：step_thinking / Action / Observation 直接拼进 `Message.thinking`，沿用 `ThinkingBlock` 渲染。等 2b 的轨迹面板会拆出 `<AgentTrace>` 组件。
+- **Abort 持久化 metadata.aborted=true 但 SSE 不发 error**：与第一期一致，前端靠 `onFinally` 复位 streaming 状态；UI 上表现为「停止」按钮复位，无错误提示。
+- **温度最终未开关**：`agent_final_temperature` 仍是 schema 字段，但 Agent 不会"再发一次 final 调用"——一旦步骤输出 `Final Answer:` 就用该文做 final_content，并不会用 final_temperature 再发一次模型调用。
+
+### 项目依赖锁定
+
+- `uv.lock` 已刷新；LangGraph 自带的 `langsmith`/`tenacity`/`pyyaml` 等传递依赖被纳入。CI 在 `langchain-core` 出 minor 版本时按 `>=0.3,<0.4` 锁，避免链式漂移。
+
+---
+
+## 十五、本次工作记录（AgentService 2b-i：RAG + 知识库管理，2026-07-21）
+
+落地 §11.4 的 2b-i：在 Skills + Tool Calling 框架之上引入向量检索与知识库管理。Agent 模式经 `retrieve_notes` 工具自主检索用户上传的 markdown 笔记；普通 chat 模式把 KB 命中段落静默注入上下文。AgentTrace 面板留 2b-ii。
+
+**用户本轮确认的两个决策**：(1) Embedding 用本地 `bge-small-zh`（按原计划，配 FakeEmbedder 兜底）；(2) 范围先做核心，Docker torch 烘焙 + CI 留尾巴。
+
+**探索中发现的 3 处偏差（相对原 §11.4）**：(1) `langchain-text-splitters` 未安装——`MarkdownHeaderTextSplitter`/`RecursiveCharacterTextSplitter` 在该包而非 `langchain-core`；(2) 无 `pytest.ini`——`slow` marker 须注册在 `pyproject.toml [tool.pytest.ini_options]`；(3) ChatHeader「知识库」按钮是 disabled 占位而非已接线。
+
+**关键设计修正**：原计划 FakeEmbedder「注入零向量」在 chromadb cosine 下返回 nan/退化为平局，改为 **no-op**——`embed_*` 返回 `[]`、`is_available()=False`、`retrieve()` 返回 `[]`、`upload_document()` 抛 `RuntimeError`→HTTP 503。dev 不装 torch 时优雅降级，上传时显式报错。
+
+### 改动文件
+
+- 依赖
+    - [backend/pyproject.toml](backend/pyproject.toml)：加 `chromadb>=0.5`、`langchain-chroma>=0.1`、`langchain-text-splitters>=0.3`（关键缺失）、`sentence-transformers>=2.7`；`[tool.pytest.ini_options]` 加 `markers = ["slow: ..."]`。
+- Config / 模型
+    - [backend/app/config.py](backend/app/config.py) + [.env.example](backend/.env.example)：加 `embedding_model`、`chroma_persist_dir`（默认 `.chroma`，相对 backend root 解析）、`kb_chunk_size=800`、`kb_chunk_overlap=100`、`kb_top_k=4`、`kb_min_score=0.3`。
+    - [backend/app/models.py](backend/app/models.py)：新增 `KnowledgeBase`（id/name/description/created_at/updated_at）与 `KnowledgeDoc`（id/kb_id FK CASCADE+index/filename/sha256/text/created_at），relationship `cascade="all, delete-orphan"`。无 `(kb_id,sha256)` 唯一约束——dedup 走显式 SELECT 返回 `deduplicated=True`。
+    - [backend/app/schemas.py](backend/app/schemas.py)：新增 `KnowledgeBaseCreate`/`KnowledgeBaseUpdate`/`KnowledgeBaseOut`/`KnowledgeDocOut`（不含 text）/`DocumentUploadResponse`/`RetrievedChunk`，照 `ModelConfig*` 风格。`ChatChunk` 本期不改。
+- 新后端服务
+    - [backend/app/services/embedding_service.py](backend/app/services/embedding_service.py)：`EmbeddingService` 模块单例，懒加载 `SentenceTransformer('BAAI/bge-small-zh-v1.5')`（import 放进 `_load_model()` 避免测试链路引 torch）；不可用时回退 `FakeEmbedder`（no-op，返 `[]`）。`is_available()`/`embed_texts()`/`embed_query()`。
+    - [backend/app/services/knowledge_service.py](backend/app/services/knowledge_service.py)：`KnowledgeService(db)` KB/doc CRUD + chunking + embed + retrieve。模块内懒 chromadb `PersistentClient` 单例（`_get_chroma_client()`，persist dir 对 `_BACKEND_ROOT` 解析）；collection-per-kb（`f"kb_{kb_id}"`，cosine space，删 KB = O(1) `delete_collection`）；`_chunk_text` 用 `MarkdownHeaderTextSplitter`→`RecursiveCharacterTextSplitter`；`retrieve` 返回 `RetrievedChunk`，score=1-distance。不可用时 `retrieve` 返 `[]`、`upload_document` 抛错。
+    - [backend/app/skills/retrieve_notes.py](backend/app/skills/retrieve_notes.py)：**工厂** `get_retrieve_notes_skill(kb_id, knowledge_service)` 返回 `_RetrieveNotesSkill`，**不进 `registry._REGISTRY`**。`run` 返回带 `[来源: doc.md #heading | score=..]` 标签的 markdown，**不加 `Observation:` 前缀**（agent_service 会加），`metadata.chunks` 透传结构化片段。流经 `_wrap_skill_as_tool` 无需改 agent_service（duck-typed）。
+    - [backend/app/routers/knowledge.py](backend/app/routers/knowledge.py)：`GET/POST/DELETE /api/knowledge-bases`、`GET/POST/DELETE /api/knowledge-bases/{id}/documents`。multipart 用 `UploadFile = File(...)`，仅 `.md/.markdown/.txt`、10MB 上限；embedding 不可用→503；未知 KB→404。
+- 接线
+    - [backend/app/routers/agent.py](backend/app/routers/agent.py)：`skills = list(iter_skills())` 后，若 `request.rag_knowledge_base_id` 非空，构造 `KnowledgeService(db)` + `get_retrieve_notes_skill` append；若 `enable_skills` 是 list 则追加 `"retrieve_notes"`（always-on 防白名单过滤）。
+    - [backend/app/routers/chat.py](backend/app/routers/chat.py)：`attach_files_to_messages` 后，若 `rag_knowledge_base_id` 非空，`try: KnowledgeService.retrieve(...)` + `inject_retrieved_context`；`except: log warning + continue`（检索失败不阻断 chat）。
+    - [backend/app/services/_chat_helpers.py](backend/app/services/_chat_helpers.py)：新增 `inject_retrieved_context(messages, chunks)`，prepend `[知识库检索结果]\n{chunks}\n\n[以下为用户原始问题]` 到最后一条 user 消息，**不替换**原内容。
+    - [backend/main.py](backend/main.py)：注册 `knowledge.router`；model import 加 `KnowledgeBase, KnowledgeDoc` 让 `create_all` 看见。**不做** lifespan eager-init（懒加载）。
+- 前端
+    - [frontend/src/types/index.ts](frontend/src/types/index.ts)：加 `KnowledgeBase`/`KnowledgeDoc`/`DocumentUploadResponse`/`RetrievedChunk`（`ragKnowledgeBaseId` 已存在不改）。
+    - [frontend/src/api/knowledge.ts](frontend/src/api/knowledge.ts)（新增）：CRUD 用 `apiFetch`（mirror `models.ts`）；`uploadDocument` 绕过 apiFetch 走原生 fetch 发 FormData（mirror `upload.ts`），响应 `snakeToCamel`。
+    - [frontend/src/store/workspaceStore.ts](frontend/src/store/workspaceStore.ts)：加 `knowledgeBases`/`selectedKbId`('' sentinel)/`setSelectedKbId`/`loadKnowledgeBases`/`addKnowledgeBase`/`removeKnowledgeBase`；persist version 4→5，`selectedKbId` **同时**加进 `partialize` 与 `merge`（坑：只加 partialize 会让 hydration 静默重置）。
+    - [frontend/src/components/KnowledgeBaseManager.tsx](frontend/src/components/KnowledgeBaseManager.tsx)（新增）：mirror `ModelManager.tsx` 结构，两级视图（KB 列表 → 选中 KB → 文档列表 + 上传/删除），删除确认用内联样式嵌套 overlay（Tailwind v4 @theme 使 bg-* 透明）。
+    - [frontend/src/components/ChatHeader.tsx](frontend/src/components/ChatHeader.tsx)：知识库按钮移除 disabled + 接 onClick 开 KnowledgeBaseManager；新增 KB `<select>` 下拉（空时 `--无--`）；**直接读 store**（不经 WorkspaceLayout props）。
+    - [frontend/src/hooks/useConversation.ts](frontend/src/hooks/useConversation.ts)：mount 时 `loadModels` 后追加 `loadKnowledgeBases`。
+    - [frontend/src/hooks/useChatStream.ts](frontend/src/hooks/useChatStream.ts)：agent 与 chat 两分支请求体加 `ragKnowledgeBaseId: useWorkspaceStore.getState().selectedKbId || undefined`（用 `getState()` 避免 stale，mirror agentMode 模式）。
+- 测试
+    - [backend/tests/test_knowledge_service.py](backend/tests/test_knowledge_service.py)（新增 15 用例）：fake embedder（hash 派生确定性非零向量）+ temp chroma 目录，覆盖 KB CRUD、上传→chunk→索引、dedup、坏类型/超大/未知 KB、删文档、retrieve 排序与 min_score 过滤、FakeEmbedder no-op 路径。
+    - [backend/tests/test_retrieve_notes_skill.py](backend/tests/test_retrieve_notes_skill.py)（新增 7 用例）：fake KB + fake retrieval 验证输出格式（来源标签、无 `Observation:` 前缀）、`metadata.chunks`、args 透传、空结果消息。
+    - [backend/tests/test_routers_knowledge.py](backend/tests/test_routers_knowledge.py)（新增 9 用例）：httpx ASGITransport 端到端，覆盖 list/create/delete KB、上传/dedup/坏类型/未知 KB、删文档。
+    - [backend/tests/test_chat_helpers.py](backend/tests/test_chat_helpers.py)（新增 5 用例）：`inject_retrieved_context` prepend/不替换/no-op/无 heading/与文件 attach 共存。
+    - [backend/tests/test_agent_service_v2.py](backend/tests/test_agent_service_v2.py)：新增 2 用例——retrieve_notes 流经 agent loop（action/observation 事件 + tool_calls 持久化 + 无重复前缀）、空结果 observation。
+    - [frontend/tests/components/KnowledgeBaseManager.test.tsx](frontend/tests/components/KnowledgeBaseManager.test.tsx)（新增，建 `tests/components/` 目录）：mock API 覆盖列表渲染/创建/上传/删除确认。
+    - [frontend/tests/hooks/useChatStream.test.ts](frontend/tests/hooks/useChatStream.test.ts)：新增 2 用例——chat 与 agent 两端点 fetch body 含 `rag_knowledge_base_id`。
+
+### 验证
+
+- 后端：`cd backend && uv run pytest -q` → **89 passed**（原 51 + 38 新增）。`uv run pytest -m "not slow"` → 89 passed（CI 等价）。
+- 前端：`cd frontend && npm run test` → **15 passed**（原 7 + 4 KB manager + 2 KB body + 2 已有 agent）；`npm run build` 成功；`npm run lint` 仅 1 个**预先存在**的 `useConversation.ts` exhaustive-deps 警告（本次未新增）。
+- 手动端到端 smoke（dev，真 bge 已随 `uv sync` 装上）：建 KB → 上传 md（验证 chunks 数）→ 普通 chat 问笔记内容（验证回复引用）→ Agent 模式问笔记（验证 `Action: retrieve_notes`）。脚本未单独固化。
+- 实测检索质量：上传含「安装」「部署」两节的中文 md，问「怎么安装 fastapi?」top-1 命中 `#安装` 节 score≈0.81。
+
+### 已知限制（按设计约束，非缺陷）
+
+- **AgentTrace 面板未做**：2b-i 的检索结果经现有 `observation` 事件透传，复用 `ThinkingBlock` 渲染。结构化 `step_start`/`step_end`/`retrieved` 事件与 `<AgentTrace>` 组件留 2b-ii。
+- **纯向量检索**：无 BM25 hybrid；同步处理文档（异步化留 2b-ii）。
+- **上传格式**：仅 `.md/.markdown/.txt`（PDF/DOCX 留后续）。
+- **FakeEmbedder 路径**：不装 torch 时上传返 503、检索返空——RAG 优雅降级而非崩。生产用真 bge 需 `uv sync` 装上（已含）或 Docker 烘焙（留尾巴）。
+
+### 尾巴任务（本期未做）
+
+- `backend/Dockerfile` 追加 `sentence-transformers` 安装 + 预烘焙 `bge-small-zh-v1.5` 到镜像。
+- CI matrix（`.github/workflows/ci.yml`）评估 torch/onnxruntime 对三平台构建时长影响，必要时 split 或缓存。
+- `@pytest.mark.slow` 真模型 smoke 用例（marker 已注册，用例待补；本地 `pytest -m slow` 跑）。

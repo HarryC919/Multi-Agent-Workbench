@@ -73,10 +73,12 @@ export function WorkspaceLayout() {
           models={store.models}
           selectedModel={store.selectedModel}
           thinkingEnabled={store.thinkingEnabled}
+          agentMode={store.agentMode}
           attachedFiles={store.attachedFiles}
           isStreaming={store.isStreaming}
           onModelChange={store.setSelectedModel}
           onThinkingToggle={store.setThinkingEnabled}
+          onAgentModeToggle={store.setAgentMode}
           onAttachFile={store.attachFile}
           onRemoveFile={store.removeFile}
           onSend={handleSend}

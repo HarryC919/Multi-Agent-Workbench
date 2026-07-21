@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import String, Text, Boolean, ForeignKey
+from sqlalchemy import String, Text, Boolean, ForeignKey, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -37,6 +37,10 @@ class Message(Base):
     thinking: Mapped[str] = mapped_column(Text, default="")  # reasoning / chain-of-thought content
     model: Mapped[str | None] = mapped_column(String(100), nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="done")  # pending / streaming / done / error
+    # AgentService phase 2a: per-agent metadata (step_count, aborted flag,
+    # tool_calls transcript). Stored as JSON; older chat rows simply have {}
+    # via the default-dict below. SQLite stores JSON as TEXT.
+    metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(default=now_utc)
 
     conversation: Mapped["Conversation"] = relationship("Conversation", back_populates="messages")
@@ -72,3 +76,37 @@ class ModelConfig(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(default=now_utc, onupdate=now_utc)
+
+
+class KnowledgeBase(Base):
+    __tablename__ = "knowledge_bases"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(default=now_utc, onupdate=now_utc)
+
+    documents: Mapped[list["KnowledgeDoc"]] = relationship(
+        "KnowledgeDoc", back_populates="knowledge_base", cascade="all, delete-orphan"
+    )
+
+
+class KnowledgeDoc(Base):
+    __tablename__ = "knowledge_docs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    # Indexed: every retrieve / list_documents query filters by kb_id.
+    kb_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("knowledge_bases.id", ondelete="CASCADE"), index=True
+    )
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    # sha256 of decoded text content; used for per-KB dedup on re-upload.
+    # Dedup is an explicit SELECT check (returns deduplicated=True) rather than
+    # a DB unique constraint so we can give a friendly response.
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    text: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(default=now_utc)
+
+    knowledge_base: Mapped["KnowledgeBase"] = relationship("KnowledgeBase", back_populates="documents")
+

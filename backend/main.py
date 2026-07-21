@@ -7,8 +7,8 @@ from fastapi.responses import JSONResponse
 
 from app.database import engine, Base, AsyncSessionLocal
 from app.logging_config import setup_logging
-from app.models import Conversation, Message, UploadedFile, ModelConfig  # noqa: F401
-from app.routers import agent, chat, conversations, models, skills, upload
+from app.models import Conversation, Message, UploadedFile, ModelConfig, KnowledgeBase, KnowledgeDoc  # noqa: F401
+from app.routers import agent, chat, conversations, knowledge, models, skills, upload
 from app.seed import seed_models
 
 setup_logging()
@@ -51,6 +51,17 @@ async def lifespan(app: FastAPI):
         except Exception:
             pass
 
+        # Lightweight migration: add metadata column to existing messages
+        # tables (AgentService phase 2a stores step_count / aborted flag /
+        # tool_calls transcript here). SQLite supports ADD COLUMN; the column
+        # may already exist on upgraded DBs, so ignore the duplicate error.
+        try:
+            await conn.exec_driver_sql(
+                "ALTER TABLE messages ADD COLUMN metadata TEXT DEFAULT '{}'"
+            )
+        except Exception:
+            pass
+
     async with AsyncSessionLocal() as session:
         await seed_models(session)
 
@@ -80,6 +91,7 @@ app.include_router(agent.router, prefix="/api")
 app.include_router(upload.router, prefix="/api")
 app.include_router(models.router, prefix="/api")
 app.include_router(skills.router, prefix="/api")
+app.include_router(knowledge.router, prefix="/api")
 
 
 @app.get("/health")

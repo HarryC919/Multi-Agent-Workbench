@@ -1,6 +1,7 @@
 import { useRef } from 'react'
 import { nanoid } from 'nanoid'
 import { sendChatStream } from '@/api/chat'
+import { sendAgentChatStream } from '@/api/agent-chat'
 import { useToastStore } from '@/store/toastStore'
 import { useWorkspaceStore } from '@/store/workspaceStore'
 import type { ChatMessage, FileContent, Message, UploadedFile } from '@/types'
@@ -76,6 +77,65 @@ export function useChatStream(): UseChatStreamReturn {
         content: f.textContent,
       }))
 
+    // Agent mode (phase 2a) routes to /api/agent-chat — emits the same
+    // text/thinking stream plus action/observation events. We render the
+    // ReAct transcript as the assistant's body+thinking so the existing
+    // MessageItem / ThinkingBlock components work without changes.
+    const agentMode = useWorkspaceStore.getState().agentMode
+    // Read KB id fresh from the store (not the captured snapshot) so a KB
+    // selection change in ChatHeader between renders isn't missed.
+    const ragKnowledgeBaseId = useWorkspaceStore.getState().selectedKbId || undefined
+
+    if (agentMode) {
+      const { abort } = sendAgentChatStream(
+        {
+          conversationId: resolvedId,
+          model: store.selectedModel,
+          messages: [...history, { role: 'user', content }],
+          files,
+          stream: true,
+          thinking: store.thinkingEnabled,
+          ragKnowledgeBaseId,
+        },
+        {
+          onText: (text) => {
+            store.appendToAssistant(text)
+          },
+          onThinking: (text) => {
+            store.appendToAssistantThinking(text)
+          },
+          onAction: (name, input, step) => {
+            const line = `\n[Step ${step}] Action: ${name}(${input})\n`
+            store.appendToAssistantThinking(line)
+          },
+          onObservation: (name, observation, step) => {
+            const line = `\n[Step ${step}] Observation(${name}): ${observation}\n`
+            store.appendToAssistantThinking(line)
+          },
+          onWarning: (message) => {
+            const msg = message || 'agent-limit'
+            useToastStore.getState().addToast(`Agent: ${msg}`, 'warning')
+            store.appendToAssistant(`\n\n**Agent ⚠️:** ${msg}`)
+          },
+          onDone: () => {
+            store.setAssistantStatus('done')
+            store.loadConversations()
+          },
+          onError: (error) => {
+            store.appendToAssistant(`\n\n**Agent Error:** ${error.message}`)
+            store.setAssistantStatus('error')
+            useToastStore.getState().addToast(error.message, 'error')
+          },
+          onFinally: () => {
+            store.setStreaming(false)
+            abortRef.current = null
+          },
+        },
+      )
+      abortRef.current = abort
+      return
+    }
+
     const { abort } = sendChatStream(
       {
         conversationId: resolvedId,
@@ -84,6 +144,7 @@ export function useChatStream(): UseChatStreamReturn {
         files,
         stream: true,
         thinking: store.thinkingEnabled,
+        ragKnowledgeBaseId,
       },
       {
         onText: (text) => {
@@ -91,6 +152,9 @@ export function useChatStream(): UseChatStreamReturn {
         },
         onThinking: (text) => {
           store.appendToAssistantThinking(text)
+        },
+        onWarning: (message) => {
+          if (message) useToastStore.getState().addToast(message, 'warning')
         },
         onDone: () => {
           store.setAssistantStatus('done')

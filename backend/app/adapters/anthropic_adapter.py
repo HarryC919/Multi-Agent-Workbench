@@ -31,6 +31,9 @@ class AnthropicAdapter(BaseAdapter):
         messages: list[dict[str, str]],
         model: str,
         thinking: bool = False,
+        *,
+        temperature: float | None = None,
+        top_p: float | None = None,
         **kwargs,
     ) -> AsyncIterator[StreamChunk]:
         system, msgs = self._convert_messages(messages)
@@ -42,6 +45,12 @@ class AnthropicAdapter(BaseAdapter):
         }
         if system:
             payload["system"] = system
+        # Anthropic accepts both temperature and top_p; only inject when the
+        # caller sets them so we don't override each model's trained defaults.
+        if temperature is not None:
+            payload["temperature"] = temperature
+        if top_p is not None:
+            payload["top_p"] = top_p
 
         # Extended thinking: Anthropic requires max_tokens to exceed the
         # thinking budget. When enabled, raise max_tokens and add the thinking

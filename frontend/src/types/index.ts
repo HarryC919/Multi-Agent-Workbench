@@ -17,6 +17,7 @@ export interface Message {
   thinking?: string
   model?: string
   status: MessageStatus
+  metadata?: Record<string, unknown>
   createdAt: string
 }
 
@@ -65,15 +66,62 @@ export interface ChatRequest {
   ragKnowledgeBaseId?: string
 }
 
+export interface AgentChatRequest extends ChatRequest {
+  maxSteps?: number
+  stepTemperature?: number
+  finalTemperature?: number
+  enableSkills?: string[]
+}
+
 export interface ChatChunk {
-  type: 'text' | 'thinking' | 'done' | 'error'
+  type: 'text' | 'thinking' | 'done' | 'error' | 'warning' | 'action' | 'observation'
   content?: string
   finishReason?: string
   message?: string
+  // Agent mode (phase 2a) action / observation events.
+  name?: string
+  step?: number
+  input?: string
+  maxSteps?: number
 }
 
 export interface UploadFileResponse {
   fileId: string
   name: string
   textContent: string
+}
+
+// ---------------------------------------------------------------------------
+// AgentService phase 2b-i — knowledge base / RAG types.
+// ---------------------------------------------------------------------------
+
+export interface KnowledgeBase {
+  id: string
+  name: string
+  description: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface KnowledgeDoc {
+  id: string
+  kbId: string
+  filename: string
+  sha256: string
+  createdAt: string
+}
+
+export interface DocumentUploadResponse {
+  docId: string
+  filename: string
+  chunks: number
+  deduplicated: boolean
+}
+
+export interface RetrievedChunk {
+  docId: string
+  filename: string
+  heading: string
+  score: number
+  text: string
 }

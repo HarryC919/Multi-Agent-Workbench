@@ -26,6 +26,9 @@ class GeminiAdapter(BaseAdapter):
         messages: list[dict[str, str]],
         model: str,
         thinking: bool = False,
+        *,
+        temperature: float | None = None,
+        top_p: float | None = None,
         **kwargs,
     ) -> AsyncIterator[StreamChunk]:
         # Gemini thinking (includeThoughts) is not wired up in this iteration;
@@ -36,9 +39,18 @@ class GeminiAdapter(BaseAdapter):
             f"https://generativelanguage.googleapis.com/v1beta/models/{model}"
             f":streamGenerateContent?alt=sse&key={self.api_key}"
         )
-        payload = {
+        payload: dict = {
             "contents": contents,
         }
+        # Inject sampling params only when explicitly provided, so each model's
+        # trained defaults stay intact when the caller passes nothing.
+        gen_cfg: dict = {}
+        if temperature is not None:
+            gen_cfg["temperature"] = temperature
+        if top_p is not None:
+            gen_cfg["topP"] = top_p
+        if gen_cfg:
+            payload["generationConfig"] = gen_cfg
 
         async with self.client.stream(
             "POST",

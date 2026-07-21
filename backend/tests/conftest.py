@@ -44,6 +44,15 @@ async def setup_database():
         except Exception:
             pass
 
+        # AgentService phase 2a: add metadata column for agent step / tool
+        # call transcript persistence.
+        try:
+            await conn.exec_driver_sql(
+                "ALTER TABLE messages ADD COLUMN metadata TEXT DEFAULT '{}'"
+            )
+        except Exception:
+            pass
+
     async with AsyncSessionLocal() as session:
         await seed_models(session)
 
