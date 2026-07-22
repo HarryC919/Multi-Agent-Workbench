@@ -535,9 +535,12 @@ My_Agent/
 - `cd frontend && npm run test && npm run build && npm run lint` 全过。
 - 手动：Agent 模式下连发多个 Action 步骤，UI 展示卡片化轨迹；retrieved chunks 渲染为「来源：doc.md #heading」可折叠卡片。
 
-### 11.6 第三期前瞻（不在本期范围）
+### 11.6 Agent 模式限制
+- Agent 模式下强制 Thinking，不可关闭 Thinking。
+
+### 11.7 第三期前瞻（不在本期范围）
 - 厂商原生 tool-calling API 接入（OpenAI `tool_calls` delta、Anthropic `tools` 参数）：替换 ReAct prompt 注入。
-- 多用户隔离 + 权限。
 - 异步化文档处理（上传文档后立即返回 doc_id，后台 chunking embedding）。
 - 混合检索（BM25 + 向量 ensemble）。
 - 知识库 RAG over PDF/DOCX 放开。
+- 完善 skills 模块，支持以 .md 文件形式导入技能。

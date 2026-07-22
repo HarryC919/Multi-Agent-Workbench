@@ -199,7 +199,10 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 
       setSelectedModel: (model) => set({ selectedModel: model }),
 
-      setThinkingEnabled: (value) => set({ thinkingEnabled: value }),
+      setThinkingEnabled: (value) =>
+        // Agent 模式下深度思考是 ReAct 推理的必要输出（trace 依赖它），
+        // 强制启用——忽略任何关闭尝试，避免用户手动关掉后 trace 不可见。
+        set((state) => (state.agentMode ? state : { thinkingEnabled: value })),
 
       setAgentMode: (value) =>
         // Agent 模式走 ReAct 多步推理，思考链是推理过程的必要输出——开启时

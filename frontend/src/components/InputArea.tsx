@@ -178,13 +178,21 @@ export function InputArea({
           <button
             type="button"
             onClick={() => onThinkingToggle(!thinkingEnabled)}
+            disabled={agentMode}
             className={cn(
               'flex h-8 items-center gap-1 rounded-md border px-2 text-xs font-medium transition-colors',
               thinkingEnabled
                 ? 'border-blue-500 bg-background text-blue-600 dark:border-blue-400 dark:bg-background dark:text-blue-400'
                 : 'border-input bg-background text-muted-foreground hover:border-blue-400 hover:text-blue-500',
+              agentMode && 'cursor-not-allowed opacity-60',
             )}
-            title={thinkingEnabled ? '关闭深度思考' : '开启深度思考'}
+            title={
+              agentMode
+                ? 'Agent 模式下强制启用深度思考'
+                : thinkingEnabled
+                  ? '关闭深度思考'
+                  : '开启深度思考'
+            }
           >
             <Brain className={cn('h-3.5 w-3.5', thinkingEnabled && 'fill-blue-100 dark:fill-blue-100')} />
             深度思考
@@ -196,12 +204,12 @@ export function InputArea({
             className={cn(
               'flex h-8 items-center gap-1 rounded-md border px-2 text-xs font-medium transition-colors',
               agentMode
-                ? 'border-amber-500 bg-amber-50 text-amber-700 dark:border-amber-400 dark:bg-amber-900/30 dark:text-amber-300'
+                ? 'border-amber-500 bg-background text-amber-700 dark:border-amber-400 dark:bg-background dark:text-amber-300'
                 : 'border-input bg-background text-muted-foreground hover:border-amber-400 hover:text-amber-600',
             )}
             title={agentMode ? '关闭 Agent 模式' : '开启 Agent 模式（多步推理 + 工具）'}
           >
-            <Zap className={cn('h-3.5 w-3.5', agentMode && 'fill-amber-200 dark:fill-amber-700')} />
+            <Zap className={cn('h-3.5 w-3.5', agentMode && 'fill-amber-200 dark:fill-amber-200')} />
             Agent
           </button>
         </div>
