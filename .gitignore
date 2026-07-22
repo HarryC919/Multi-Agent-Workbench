@@ -34,6 +34,10 @@ frontend/workbench.db
 backend/workbench.db-shm
 backend/workbench.db-wal
 
+# AgentService 2b-i: chromadb on-disk vector index (runtime-generated,
+# machine-specific, rebuildable from uploaded docs — never commit).
+backend/.chroma/
+
 # Test / Coverage
 .pytest_cache/
 .coverage

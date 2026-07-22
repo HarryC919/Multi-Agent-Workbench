@@ -93,7 +93,24 @@ class RetrieveNotesSkill:
             lines.append(f"{attribution}\n{c.chunk_text}")
         return {
             "output": "\n\n".join(lines),
-            "metadata": {"kb_id": self.kb_id, "count": len(chunks)},
+            "metadata": {
+                "kb_id": self.kb_id,
+                "count": len(chunks),
+                # Structured chunk payload (phase 2b-ii): the agent loop reads
+                # this via `tool._last_metadata` and emits a `retrieved` SSE
+                # event so the frontend can render source-attributed cards
+                # instead of parsing the markdown observation string.
+                "chunks": [
+                    {
+                        "doc_id": c.doc_id,
+                        "filename": c.filename,
+                        "heading": c.heading,
+                        "score": c.score,
+                        "text": c.chunk_text,
+                    }
+                    for c in chunks
+                ],
+            },
         }
 
 

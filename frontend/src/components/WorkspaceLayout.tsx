@@ -28,6 +28,15 @@ export function WorkspaceLayout() {
       useToastStore.getState().addToast('请先选择一个模型', 'warning')
       return
     }
+    // Agent mode with no KB selected: retrieve_notes can't be armed, so the
+    // backend degrades to a direct answer (no death-loop). Surface this so
+    // the user knows this turn won't search their notes — but don't block
+    // the send, since not every agent question needs retrieval.
+    if (store.agentMode && !store.selectedKbId) {
+      useToastStore
+        .getState()
+        .addToast('未选择知识库：本轮 Agent 将直接作答，无法检索笔记', 'warning')
+    }
     // Starting from the empty/landing state: create a conversation first so
     // the first message lands in a real conversation (and triggers title
     // auto-generation on the backend). Use the returned id explicitly —

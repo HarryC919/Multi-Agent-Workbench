@@ -3,7 +3,8 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import remarkGfm from 'remark-gfm'
 import { cn } from '@/lib/utils'
 import { ThinkingBlock } from './ThinkingBlock'
-import type { Message } from '@/types'
+import { AgentTrace } from './AgentTrace'
+import type { AgentStep, Message } from '@/types'
 
 interface MessageItemProps {
   message: Message
@@ -11,6 +12,15 @@ interface MessageItemProps {
 
 export function MessageItem({ message }: MessageItemProps) {
   const isUser = message.role === 'user'
+
+  // Phase 2b-ii: agent messages carry `metadata.agent` + a `steps` transcript.
+  // Render the structured AgentTrace when present; fall back to ThinkingBlock
+  // for older 2a/2b-i messages that only populated `thinking`. Plain chat
+  // messages (no agent marker) render ThinkingBlock off `thinking` as before.
+  const meta = (message.metadata ?? {}) as Record<string, unknown>
+  const isAgent = meta.agent === true
+  const agentSteps = (meta.steps as AgentStep[] | undefined) ?? []
+  const hasAgentSteps = isAgent && agentSteps.length > 0
 
   return (
     <div className={cn('flex w-full', isUser ? 'justify-end' : 'justify-start')}>
@@ -24,12 +34,20 @@ export function MessageItem({ message }: MessageItemProps) {
           <div className="whitespace-pre-wrap">{message.content}</div>
         ) : (
           <>
-            {message.thinking && (
-              <ThinkingBlock
-                thinking={message.thinking}
+            {hasAgentSteps ? (
+              <AgentTrace
+                steps={agentSteps}
                 isStreaming={message.status === 'streaming'}
                 bodyStarted={!!message.content}
               />
+            ) : (
+              message.thinking && (
+                <ThinkingBlock
+                  thinking={message.thinking}
+                  isStreaming={message.status === 'streaming'}
+                  bodyStarted={!!message.content}
+                />
+              )
             )}
             <div className="prose prose-sm dark:prose-invert max-w-none">
             <ReactMarkdown

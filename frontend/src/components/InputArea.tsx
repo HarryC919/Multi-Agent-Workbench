@@ -4,6 +4,7 @@ import { Paperclip, Send, Square, X, Brain, Zap } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { uploadFile } from '@/api/upload'
 import { useToastStore } from '@/store/toastStore'
+import { useWorkspaceStore } from '@/store/workspaceStore'
 import { cn } from '@/lib/utils'
 import type { ModelConfig, UploadedFile } from '@/types'
 
@@ -60,6 +61,9 @@ export function InputArea({
   const [text, setText] = useState('')
   const [isUploading, setIsUploading] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  // Read KB selection fresh from the store (same pattern as ChatHeader) so the
+  // "no KB" warning reflects the current dropdown state without prop drilling.
+  const selectedKbId = useWorkspaceStore((s) => s.selectedKbId)
 
   const onDrop = useCallback(
     async (acceptedFiles: File[]) => {
@@ -218,6 +222,11 @@ export function InputArea({
       {agentMode && (
         <p className="mt-2 text-[11px] text-muted-foreground">
           Agent 模式：模型可分步推理并调用工具后给出最终回复。每步思考与工具调用过程会显示在「思考过程」中。
+          {!selectedKbId && (
+            <span className="text-amber-600 dark:text-amber-400">
+              {' '}（未选择知识库，将无法检索笔记，直接作答）
+            </span>
+          )}
         </p>
       )}
     </div>

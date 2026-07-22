@@ -549,3 +549,85 @@
 - `backend/Dockerfile` 追加 `sentence-transformers` 安装 + 预烘焙 `bge-small-zh-v1.5` 到镜像。
 - CI matrix（`.github/workflows/ci.yml`）评估 torch/onnxruntime 对三平台构建时长影响，必要时 split 或缓存。
 - `@pytest.mark.slow` 真模型 smoke 用例（marker 已注册，用例待补；本地 `pytest -m slow` 跑）。
+
+## 十六、本次工作记录（AgentService 2b-ii：AgentTrace 面板，2026-07-22）
+
+落地 2b-i 遗留的 AgentTrace 面板：把 Agent 模式的 ReAct 多步推理从「堆在 `Message.thinking` 文本、复用 `ThinkingBlock`」升级为**结构化 step 卡片**展示（Thought / Action / Observation / retrieved chunks），并升级 SSE 协议为 step-bounded 事件流（`step_start`/`step_end`/`retrieved`），**保留**扁平事件向后兼容。
+
+**用户本轮确认的四个决策**（详见 `PLAN_2b-ii.md`）：(1) retrieved 数据通道 = 拓宽 `_wrap_skill_as_tool`，用 `tool._last_metadata` 属性 stash 结构化结果（不动 LangChain `ainvoke` 返 str 契约）；(2) `step_end` 全路径覆盖（含 abort），finish ∈ {final, tool, empty, max_steps, error}；(3) agent 消息标记 = `metadata.agent`（占位 + 三处 persist 都写，否则 reload 丢失）；(4) Agent 消息正文只留最终答案——后端对每步 Thought/Action/Final Answer 都发 `text`，前端累积进 step.text，仅 `finish==="final"` 时去 `Final Answer:` 前缀后提升为 `message.content`，`thinking` 对 agent 消息保持空。
+
+**探索中确认的关键事实**：ReAct 循环有 5 条正常终止路径 + 2 条异常路径（外层 CancelledError 跳过 step_end，因 `step_number` 可能未绑定）；`_wrap_skill_as_tool._arun` 原先丢弃 `result["metadata"]`；retrieve_notes 成功返回的 metadata 无 chunks（局部变量 `chunks` 含 `KnowledgeRetrievalResult` 可用）；前后端 `ChatChunk` schema 已漂移（TS 有 `input`/`maxSteps`，Python 无）。
+
+**实现中踩到的坑**：
+- **`tool` 闭包引用 NameError**：原 `_wrap_skill_as_tool` 在 `return StructuredTool.from_function(...)` 内联构造 tool，`_arun` 闭包引用 `tool` 时该名从未绑定。改为先 `tool = StructuredTool.from_function(...)` 再 `return tool`，闭包按 cell 引用即可在调用时解析。
+- **zustand `set` 类型不匹配**：helper 函数若声明自定义 `StoreSet` 类型，与 zustand `set` 的重载签名（`replace` 可为 `true`）冲突。改为传入 `StoreApi<WorkspaceState>`（工厂第三参数 `api`），用 `api.setState`。
+- **Tailwind v4 @theme 透明坑**（同 2b-i）：AgentTrace 的徽标/卡片背景用内联 `rgba()` 样式，不用 `bg-*`。
+- **`<details>` 折叠文本仍在 DOM**：jsdom 下 `queryByText` 不看 CSS 可见性，retrieved 非空时 observation 文本进 `<details>` 仍被找到——测试改为断言「原始观察文本」summary 存在，而非断言 observation 文本消失。
+
+### 改动文件
+
+- 后端协议/服务
+    - [backend/app/schemas.py](backend/app/schemas.py)：`ChatChunk.type` 加 `step_start`/`step_end`/`retrieved`；加 `input`/`max_steps`/`finish`/`label`/`docs` 字段（消除前后端漂移）。
+    - [backend/app/services/agent_service.py](backend/app/services/agent_service.py)：(1a) `_wrap_skill_as_tool._arun` stash `tool._last_metadata`；(1c) 循环里 `step_start`→`steps.append(current_step)`，`thinking`/`text`/`action`/`observation` 累积进 current_step，`matching.ainvoke` 后读 `getattr(matching,"_last_metadata")` 发 `retrieved` 事件；(1d) 8 路径发 `step_end`（外层 cancel 跳过），warning/error/done 加 `step` 字段；(1e) 三处 persist 写 `"agent":True`+`"steps"`。
+    - [backend/app/skills/retrieve_notes.py](backend/app/skills/retrieve_notes.py)：成功返回的 metadata 加 `chunks` 数组（`doc_id`/`filename`/`heading`/`score`/`text`）。
+- 前端
+    - [frontend/src/types/index.ts](frontend/src/types/index.ts)：`ChatChunk.type` 加 3 新类型 + `finish`/`label`/`docs` 字段；新增 `RetrievedChunkDoc`/`AgentStepAction`/`AgentStepObservation`/`AgentStep`。
+    - [frontend/src/api/agent-chat.ts](frontend/src/api/agent-chat.ts)：`AgentStreamCallbacks` 加 `onStepStart`/`onStepEnd`/`onRetrieved`；switch 加 3 case，`retrieved` 显式蛇→驼映射（SSE 无拦截器）。
+    - [frontend/src/store/workspaceStore.ts](frontend/src/store/workspaceStore.ts)：加 `mutateLastStep(api, mutate)` helper + 7 个 action（`appendAgentStep`/`appendAgentStepThinking`/`appendAgentStepText`/`setAgentStepAction`/`setAgentStepObservation`/`setAgentStepRetrieved`/`completeAgentStep`），操作 `lastMessage.metadata.steps`；工厂签名 `(set, get, api) =>`。
+    - [frontend/src/components/AgentTrace.tsx](frontend/src/components/AgentTrace.tsx)（新增）：mirror `ThinkingBlock` 折叠/自动滚动；`StepCard` 子组件含 finish 徽标 + thinking/text/action/observation/retrieved 段（retrieved 非空时 observation 折进 `<details>`），retrieved chunk 一张 `<details>` 卡片。
+    - [frontend/src/components/MessageItem.tsx](frontend/src/components/MessageItem.tsx)：三分支渲染——`metadata.agent && steps 非空`→AgentTrace；`metadata.agent && thinking 非空无 steps`→ThinkingBlock（旧 2a/2b-i 兜底）；普通 chat→ThinkingBlock。
+    - [frontend/src/hooks/useChatStream.ts](frontend/src/hooks/useChatStream.ts)：`agentMode` 读取上移到占位创建前；占位 agentMode 时设 `metadata:{agent:true,steps:[]}`；agent 分支回调重写（onStepStart→appendAgentStep 等，onText→appendAgentStepText，onStepEnd finish==="final" 时去前缀提升为 content），不再调 `appendToAssistantThinking`。
+- 测试
+    - [backend/tests/test_agent_service_v2.py](backend/tests/test_agent_service_v2.py)：更新 5 用例加 steps/agent/retrieved 断言；新增 `test_wrap_skill_as_tool_stashes_metadata`（EchoSkill `_last_metadata=={"length":5}`）、`test_step_events_pair_on_every_path`（final/tool/max_steps 各路径 step_start/step_end 配对）。
+    - [backend/tests/test_agent_service.py](backend/tests/test_agent_service.py)：phase-1 回归 `test_single_step_final_answer` 断言 `events[0]=="step_start"`（原断言 `=="thinking"`）。
+    - [frontend/tests/components/AgentTrace.test.tsx](frontend/tests/components/AgentTrace.test.tsx)（新增 7 用例）：N 步 N 卡片、finish 徽标、retrieved 非空时 observation 折进 summary、retrieved null 时显示 observation、折叠/展开、空 steps、chunk 文本渲染。
+    - [frontend/tests/hooks/useChatStream.test.ts](frontend/tests/hooks/useChatStream.test.ts)：重写 agent 测试用 step-bounded SSE，断言 `metadata.steps.length===2`、`steps[0].finish==="tool"`、`steps[1].finish==="final"`、`content==="Final answer."`（前缀已去）、`thinking` 为空；新增 retrieved chunks 入 steps + step_end error 保留 partial step 用例。
+
+### 验证
+
+- 后端：`cd backend && uv run pytest -q` → **87 passed**（原 85 + 2 新增）。
+- 前端：`cd frontend && npm run test` → **23 passed**（原 15 + 7 AgentTrace + 1 新增 useChatStream）；`npm run build` 成功；`npm run lint` 仅 1 个**预先存在**的 `useConversation.ts` 警告（本次未新增）。
+- `npx tsc -p tsconfig.app.json --noEmit` 通过。
+
+### 向后兼容
+
+- 后端同时发扁平 + 结构化事件；旧前端 switch 无新 case → 静默 fall through，扁平事件保留 `step:N`。
+- 前端 agent 消息三分支兜底：旧 2a/2b-i 持久化消息（`metadata.agent && thinking 非空无 steps`）仍渲染 ThinkingBlock。
+- 后端三处 persist 都写 `agent:True`+`steps`，reload 后标记/轨迹在。
+
+### 已知限制
+
+- 手动 E2E（Agent 模式 + 选 KB + 多步 prompt 触发 retrieve_notes → step 卡片 / retrieved chunks 卡片 / 正文只留最终答案 / 中途 abort→末卡 finish="error" 徽标）按计划执行但未固化为自动化用例，依赖上文的脚本化测试覆盖。
+- 外层 CancelledError 不发 step_end（内层已覆盖流式 cancel，step_number 可能未绑定）——属设计取舍，非缺陷。
+
+## 十七、本次工作记录（修复 Agent 无工具死循环 + KB 未选提示，2026-07-22）
+
+用户实测 2b-ii 后发现两个 bug（trace 见对话）：Agent 模式问「hw5 是我最近学的课程的作业……」时，因 KB 未选导致 `retrieve_notes` 没挂载（`tools=[]`），agent 每步输出 `Action: none` → 收到 `_NO_TOOL_OBSERVATION`「无可用工具，请基于已知信息继续推理」→ 模型再纠结一轮 → 又 `Action: none`……空转到 `max-steps-exceeded`（8 步），正文堆满重复的通用建议。根因：`tools=[]` 时 ReAct 循环仍无条件运行，无 escape。
+
+**用户确认的两个决策**：(1) 无工具时**跳过 ReAct 直接作答**（单次流式生成，不跑 Thought/Action 循环）；(2) KB 未选时**前端拦 + 后端兜底**——前端提示但不阻止发送，后端在 `tools=[]` 时优雅降级为直接作答。
+
+**不修的**（超范围/模型层）：GLM 在 ReAct 文本里渗出 `<|begin_of_action|>`/`<|tool_call|>` 原生 function-calling token（跳过 ReAct 的直接作答路径恰好绕开，无 `Action:` 触发）；「有工具但连续 `Action: none`」的 escape hatch（用户只选了「跳过 ReAct」，不加 none 计数器，保持改动最小）。
+
+### 改动文件
+
+- 后端
+    - [backend/app/services/agent_service.py](backend/app/services/agent_service.py)：新增 `_DIRECT_ANSWER_TEMPLATE` 常量（禁止 ReAct/Thought/Action 格式）；在 `stream_agent_chat` 的 `persist_done`/`persist_error` 定义后、外层 `try:` 前插入 early-branch——`not tools` 时用 direct 模板重建 messages（`_build_initial_messages` 已 prepend SystemMessage，直接调用即得），单步流式 `step_start`→thinking/text→`step_end(finish="final")`→`done`，复用 `chat_model`/`assistant_msg`/`persist_*`；`metadata` 形状与 ReAct 一致（`agent:True`/`steps`/`tool_calls:[]`），reload 后前端三分支仍走 AgentTrace。直接作答 text 原样进 content（无 `Final Answer:` 前缀剥离——direct prompt 禁止该格式）。
+    - [backend/app/routers/agent.py](backend/app/routers/agent.py)：`skills = list(iter_skills())` 处加注释说明「无 KB + 无注册 skill 时 `tools=[]` → AgentService 跳过 ReAct 直接作答，不崩」。
+- 前端
+    - [frontend/src/components/WorkspaceLayout.tsx](frontend/src/components/WorkspaceLayout.tsx)：`handleSend` 在 `selectedModel` guard 后加 `agentMode && !selectedKbId` toast 提示（warning，「未选择知识库：本轮 Agent 将直接作答，无法检索笔记」），**不阻止发送**——agent 模式不等于必须检索，强制拦会误伤无需 KB 的提问（如「写首诗」）。
+    - [frontend/src/components/InputArea.tsx](frontend/src/components/InputArea.tsx)：`agentMode` 提示段落里条件渲染无 KB 警告（amber 文字「未选择知识库，将无法检索笔记，直接作答」）；`selectedKbId` 直接从 store 读（同 ChatHeader 模式，避免 prop drilling）。
+- 测试
+    - [backend/tests/test_agent_service_v2.py](backend/tests/test_agent_service_v2.py)：新增 `test_no_tools_skips_react_direct_answer`（`skills=[]` → 单步直接作答，无 action/observation/warning 事件，`content`/`steps[0].text` 原样，`finish=="final"`，仅消耗 1 个 model turn）；`test_single_step_final_answer`/`test_max_steps_exceeded`/`test_abort_persists_metadata_aborted` 改挂 `skills=[EchoSkill()]` 保持 ReAct 路径（否则 `tools=[]` 触发 direct 分支，max-steps 永不触发、thinking 断言失败）。
+    - [backend/tests/test_agent_service.py](backend/tests/test_agent_service.py)（phase-1 回归）：导入 `EchoSkill`，5 个 `stream_agent_chat` 调用点全挂 `skills=[EchoSkill()]`（multi-step/max-steps/exploding/abort 测试断言 `msg.thinking` 含 step 内容，direct 分支 thinking 为空会失败）。
+
+### 验证
+
+- 后端：`cd backend && uv run pytest -q` → **88 passed**（原 87 + 1 新增 direct-answer）。
+- 前端：`cd frontend && npm run test` → **23 passed**（无新增测试，UI 改动由现有 agent 测试间接覆盖）；`npm run build` 成功；`npm run lint` 仅 1 个**预先存在**的 `useConversation.ts` 警告；`tsc --noEmit` 通过。
+- 手动 E2E（未固化）：Agent 模式 + 不选 KB + 问「hw5 ……」→ 不再死循环，单步直接作答，AgentTrace 一张卡片 finish="final"，正文是模型直接回答，toast 提示「未选择知识库」；Agent 模式 + 选含 hw5 的 KB + 同问题 → `retrieve_notes` 挂载成功，retrieved 卡片显示 hw5 内容。
+
+### 设计取舍
+
+- **KB 未选拦而不阻**：toast + inline 提示，不 `return`。理由：agent 模式 ≠ 必须检索，强制拦误伤无需 KB 的提问；后端兜底已保证不崩。把「是否需要检索」的选择权交给用户。
+- **direct 分支复用 AgentTrace 契约**：单步 `step_start`/`step_end(finish="final")` + `metadata.agent`/`steps`，前端无需特殊处理，一张 trace 卡片 + 正文提升逻辑（`onStepEnd finish==="final"` 去 `Final Answer:` 前缀——direct text 无此前缀，regex 不匹配，原样保留）。
+- **不加 none 计数器 escape**：用户只选「跳过 ReAct」，`tools=[]` 已是唯一死循环入口；有工具时连续 `Action: none` 是模型/prompt 层面问题（含 GLM 原生 token 渗出），留后续。

@@ -24,6 +24,7 @@ from app.models import Conversation, Message
 from app.schemas import AgentChatRequest, ChatMessage
 from app.services.agent_service import AgentService
 from app.services.conversation_service import ConversationService
+from app.skills.echo import EchoSkill
 
 
 class _ScriptedAdapter(BaseAdapter):
@@ -122,13 +123,16 @@ async def test_single_step_final_answer():
             conversation_id=conversation.id, role="user",
             content="hi", model="mock-model", status="done",
         )
-        events, _ = await _materialize(svc.stream_agent_chat(request, adapter, conversation))
+        events, _ = await _materialize(svc.stream_agent_chat(request, adapter, conversation, skills=[EchoSkill()]))
 
     types = [e["type"] for e in events]
     assert events[-1]["type"] == "done"
     assert events[-1]["finish_reason"] == "agent"
     assert types.count("text") == 1
-    assert events[0]["type"] == "thinking"
+    # step_start now precedes the first thinking chunk (phase 2b-ii step-bounded
+    # stream); the thinking event is still the first content event.
+    assert events[0]["type"] == "step_start"
+    assert "thinking" in types
     # Only one stream_chat turn was consumed.
     assert adapter._i == 1
 
@@ -154,7 +158,7 @@ async def test_multi_step_accumulates_thinking_with_boundary():
 
     async with AsyncSessionLocal() as db:
         svc = AgentService(db)
-        events, _ = await _materialize(svc.stream_agent_chat(request, adapter, conversation))
+        events, _ = await _materialize(svc.stream_agent_chat(request, adapter, conversation, skills=[EchoSkill()]))
         # Pull the assistant message we persisted.
         assistant_events = [
             e for e in events if e["type"] in ("text", "thinking", "done", "warning", "error")
@@ -195,7 +199,7 @@ async def test_max_steps_exceeded_emits_warning_and_uses_last_step():
 
     async with AsyncSessionLocal() as db:
         svc = AgentService(db)
-        events, _ = await _materialize(svc.stream_agent_chat(request, adapter, conversation))
+        events, _ = await _materialize(svc.stream_agent_chat(request, adapter, conversation, skills=[EchoSkill()]))
 
     warnings = [e for e in events if e["type"] == "warning"]
     assert len(warnings) == 1
@@ -216,7 +220,7 @@ async def test_adapter_raises_surfaces_error_and_marks_message_error():
 
     async with AsyncSessionLocal() as db:
         svc = AgentService(db)
-        events, _ = await _materialize(svc.stream_agent_chat(request, _ExplodingAdapter(), conversation))
+        events, _ = await _materialize(svc.stream_agent_chat(request, _ExplodingAdapter(), conversation, skills=[EchoSkill()]))
 
     assert events[-1]["type"] == "error"
     assert "adapter exploded" in events[-1]["message"]
@@ -245,7 +249,7 @@ async def test_abort_persists_partial_as_error():
     async with AsyncSessionLocal() as db:
         svc = AgentService(db)
         # Should not raise — the exception is swallowed inside the service.
-        events, _ = await _materialize(svc.stream_agent_chat(request, _AbortAdapter(), conversation))
+        events, _ = await _materialize(svc.stream_agent_chat(request, _AbortAdapter(), conversation, skills=[EchoSkill()]))
 
     types = [e["type"] for e in events]
     assert "error" not in types  # no error event emitted on abort

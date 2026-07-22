@@ -74,7 +74,19 @@ export interface AgentChatRequest extends ChatRequest {
 }
 
 export interface ChatChunk {
-  type: 'text' | 'thinking' | 'done' | 'error' | 'warning' | 'action' | 'observation'
+  type:
+    | 'text'
+    | 'thinking'
+    | 'done'
+    | 'error'
+    | 'warning'
+    | 'action'
+    | 'observation'
+    // Phase 2b-ii: step-bounded event stream (emitted alongside the flat
+    // events above for backward compatibility).
+    | 'step_start'
+    | 'step_end'
+    | 'retrieved'
   content?: string
   finishReason?: string
   message?: string
@@ -83,6 +95,38 @@ export interface ChatChunk {
   step?: number
   input?: string
   maxSteps?: number
+  // Phase 2b-ii step-bounded event fields.
+  finish?: string // step_end: final|tool|empty|max_steps|error
+  label?: string // step_start label
+  docs?: RetrievedChunkDoc[] // retrieved chunk documents (snake-cased on the wire)
+}
+
+export interface RetrievedChunkDoc {
+  docId: string
+  filename: string
+  heading: string | null
+  score: number
+  text: string
+}
+
+export interface AgentStepAction {
+  name: string
+  input: string
+}
+
+export interface AgentStepObservation {
+  name: string
+  content: string
+}
+
+export interface AgentStep {
+  step: number
+  thinking: string
+  text: string
+  action: AgentStepAction | null
+  observation: AgentStepObservation | null
+  retrieved: RetrievedChunkDoc[] | null
+  finish: string | null
 }
 
 export interface UploadFileResponse {

@@ -154,17 +154,21 @@ describe('useChatStream', () => {
     expect(useWorkspaceStore.getState().isStreaming).toBe(false)
   })
 
-  it('routes to /api/agent-chat when agentMode is on and surfaces action+observation events', async () => {
+  it('routes to /api/agent-chat when agentMode is on and accumulates steps into metadata', async () => {
     useWorkspaceStore.setState({ agentMode: true })
 
     fetchSpy.mockResolvedValue(
       mockResponse(
         sseStream([
+          'data: {"type":"step_start","step":1,"label":"第 1 步"}\n',
           'data: {"type":"thinking","content":"t1","step":1}\n',
           'data: {"type":"text","content":"Action: echo","step":1}\n',
           'data: {"type":"action","name":"echo","input":"hello","step":1}\n',
           'data: {"type":"observation","name":"echo","content":"Observation: hello","step":1}\n',
-          'data: {"type":"text","content":"Final answer.","step":2}\n',
+          'data: {"type":"step_end","step":1,"finish":"tool"}\n',
+          'data: {"type":"step_start","step":2,"label":"第 2 步"}\n',
+          'data: {"type":"text","content":"Final Answer: Final answer.","step":2}\n',
+          'data: {"type":"step_end","step":2,"finish":"final"}\n',
           'data: {"type":"done","finish_reason":"agent"}\n',
         ]),
       ),
@@ -190,11 +194,61 @@ describe('useChatStream', () => {
       .getState()
       .currentConversation!.messages.find((m) => m.role === 'assistant')
     expect(assistant?.status).toBe('done')
-    expect(assistant?.content).toContain('Final answer.')
-    // ReAct transcript lines live in thinking.
-    expect(assistant?.thinking).toContain('Step 1')
-    expect(assistant?.thinking).toContain('Action: echo(hello)')
-    expect(assistant?.thinking).toContain('Observation(echo)')
+    // Phase 2b-ii: the body keeps only the final answer, prefix stripped.
+    expect(assistant?.content).toBe('Final answer.')
+    // thinking stays empty for agent messages — the trace lives in steps.
+    expect(assistant?.thinking ?? '').toBe('')
+    const meta = (assistant?.metadata ?? {}) as Record<string, unknown>
+    expect(meta.agent).toBe(true)
+    const steps = meta.steps as { finish: string; action?: { input: string } }[]
+    expect(steps.length).toBe(2)
+    expect(steps[0].finish).toBe('tool')
+    expect(steps[0].action?.input).toBe('hello')
+    expect(steps[1].finish).toBe('final')
+  })
+
+  it('agent mode persists retrieved chunks into the current step and a step_end error keeps the partial step', async () => {
+    useWorkspaceStore.setState({ agentMode: true })
+
+    fetchSpy.mockResolvedValue(
+      mockResponse(
+        sseStream([
+          'data: {"type":"step_start","step":1,"label":"第 1 步"}\n',
+          'data: {"type":"action","name":"retrieve_notes","input":"q","step":1}\n',
+          'data: {"type":"retrieved","step":1,"docs":[{"doc_id":"d1","filename":"notes.md","heading":"安装","score":0.87,"text":"用 uv 安装。"}]}\n',
+          'data: {"type":"step_end","step":1,"finish":"error"}\n',
+          'data: {"type":"error","message":"boom"}\n',
+        ]),
+      ),
+    )
+
+    const { result } = renderHook(() => useChatStream())
+    act(() => {
+      result.current.sendMessage('hi', [])
+    })
+
+    await vi.waitFor(() => {
+      const assistant = useWorkspaceStore
+        .getState()
+        .currentConversation!.messages.find((m) => m.role === 'assistant')
+      expect(assistant?.status).toBe('error')
+      expect(assistant?.content).toContain('Agent Error')
+    })
+
+    const assistant = useWorkspaceStore
+      .getState()
+      .currentConversation!.messages.find((m) => m.role === 'assistant')!
+    const meta = assistant.metadata as Record<string, unknown>
+    const steps = meta.steps as {
+      finish: string
+      retrieved?: { docId: string; filename: string; text: string }[] | null
+    }[]
+    // Partial step retained with its retrieved chunks + error finish.
+    expect(steps.length).toBe(1)
+    expect(steps[0].finish).toBe('error')
+    expect(steps[0].retrieved?.[0].docId).toBe('d1')
+    expect(steps[0].retrieved?.[0].filename).toBe('notes.md')
+    expect(steps[0].retrieved?.[0].text).toBe('用 uv 安装。')
   })
 
   it('agent mode persists isStreaming=false and surfaces errors on error events', async () => {

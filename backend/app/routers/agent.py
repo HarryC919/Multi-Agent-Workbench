@@ -53,6 +53,10 @@ async def generate_agent_stream(request: AgentChatRequest):
         # Phase 2a: expose all registered skills as LangChain tools. The
         # request may whitelist a subset via enable_skills (handled by the
         # service). Skills filtered out are simply not provided here.
+        # NOTE: when no KB is selected AND no skills are globally registered,
+        # `skills` is empty → AgentService detects `tools==[]` and skips the
+        # ReAct loop, answering directly in one step (no death-loop). So an
+        # agent-chat request with no KB never crashes — it just can't retrieve.
         skills = list(iter_skills())
 
         # Phase 2b-i: when a knowledge base is selected, build a per-request

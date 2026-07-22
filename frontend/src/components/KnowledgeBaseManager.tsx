@@ -225,7 +225,7 @@ export function KnowledgeBaseManager({ open, onClose }: KnowledgeBaseManagerProp
               <Button variant="outline" size="sm" onClick={() => setShowCreate(false)}>
                 取消
               </Button>
-              <Button size="sm" disabled={saving} onClick={submitCreate}>
+              <Button variant="outline" size="sm" disabled={saving} onClick={submitCreate}>
                 {saving ? '保存中...' : '保存'}
               </Button>
             </div>

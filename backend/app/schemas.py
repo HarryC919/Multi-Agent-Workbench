@@ -44,13 +44,32 @@ class AgentChatRequest(ChatRequest):
 
 
 class ChatChunk(BaseModel):
-    type: Literal["text", "thinking", "done", "error", "warning", "action", "observation"]
+    type: Literal[
+        "text",
+        "thinking",
+        "done",
+        "error",
+        "warning",
+        "action",
+        "observation",
+        # Phase 2b-ii: step-bounded event stream (kept alongside the flat
+        # events above for backward compatibility).
+        "step_start",
+        "step_end",
+        "retrieved",
+    ]
     content: str | None = None
     finish_reason: str | None = None
     message: str | None = None
     # Fields used by the phase 2a action / observation events.
     name: str | None = None
     step: int | None = None
+    # Phase 2b-ii step-bounded event fields.
+    input: str | None = None  # action event (aligned with the TS ChatChunk)
+    max_steps: int | None = None  # warning event (aligned with TS)
+    finish: str | None = None  # step_end: final|tool|empty|max_steps|error
+    label: str | None = None  # step_start label
+    docs: list[dict] | None = None  # retrieved chunk documents
 
 
 class ConversationCreate(BaseModel):

@@ -11,14 +11,20 @@ Architecture frontiers strictly enforced:
     * Each registered Skill is wrapped as a `StructuredTool` so it satisfies
         LangChain's tool interface; the wrapper is purely a façade — calling
         the tool simply awaits `skill.run`.
-    * `Message.metadata_` JSON column holds `{step_count, aborted, tool_calls}`.
-        Plain chat stays untouched (empty dict).
+    * `Message.metadata_` JSON column holds `{agent, step_count, aborted,
+        tool_calls, steps}`. Plain chat stays untouched (empty dict).
     * Temperature knobs forwarded to the adapter; first call uses
         `agent_step_*` from config, no separate "final" call is made — once
         a step yields `Final Answer:`, that content is already final.
 
 SSE contract:
-    `text | thinking | action | observation | warning | done | error`
+    Flat events:   `text | thinking | action | observation | warning | done | error`
+    Step-bounded:  `step_start | step_end | retrieved`  (phase 2b-ii; the flat
+    events above are still emitted in parallel for backward compatibility).
+
+`Message.metadata_` JSON column holds `{agent, step_count, aborted, tool_calls,
+steps}` where `steps` is the per-step ReAct transcript (phase 2b-ii). Plain
+chat stays untouched (empty dict).
 """
 from __future__ import annotations
 
@@ -59,6 +65,13 @@ except FileNotFoundError:  # pragma: no cover — repo integrity issue
 
 _FINAL_ANSWER_PREFIX = "Final Answer:"
 _NO_TOOL_OBSERVATION = "Observation: 无可用工具，请基于已知信息继续推理。"
+# Used when no tools are armed (no KB selected + no registered skills): skip
+# the ReAct loop and answer directly. Running Thought/Action with an empty
+# tool list makes the model spin on "Action: none" until max-steps.
+_DIRECT_ANSWER_TEMPLATE = (
+    "你是一个 helpful 的助手，直接回答用户的问题。"
+    "不要使用 ReAct / Thought / Action 格式，直接给出完整答复即可。"
+)
 
 
 # ----------------------------------------------------------------- tool wrapper
@@ -82,8 +95,13 @@ def _wrap_skill_as_tool(skill: Skill) -> StructuredTool:
     async def _arun(input: str, **_: Any) -> str:
         try:
             result: SkillResult = await skill.run(input=input, args=None)
+            # Stash metadata on the tool so the agent loop can read structured
+            # results (e.g. retrieve_notes chunks) without breaking LangChain's
+            # "ainvoke returns str" contract.
+            tool._last_metadata = result.get("metadata") or {}
             return result.get("output", "")
         except Exception as exc:  # noqa: BLE001 — surface, don't crash loop
+            tool._last_metadata = {}
             return f"[tool error: {exc}]"
 
     def _run(input: str, **_: Any) -> str:
@@ -96,13 +114,16 @@ def _wrap_skill_as_tool(skill: Skill) -> StructuredTool:
         except RuntimeError:
             return ""
 
-    return StructuredTool.from_function(
+    tool = StructuredTool.from_function(
         name=skill.name,
         description=skill.description,
         args_schema=_ToolInput,
         coroutine=_arun,
         func=_run,
     )
+    # `_arun` closes over `tool` to stash structured metadata (e.g. retrieve
+    # chunks) that the ReAct loop reads via `getattr(tool, "_last_metadata")`.
+    return tool
 
 
 # ------------------------------------------------------------ ReAct parsing
@@ -171,6 +192,10 @@ class AgentService:
         step_count = 0
         aborted = False
         tool_calls: list[dict[str, Any]] = []
+        # Phase 2b-ii: per-step ReAct transcript. Each entry is a dict shaped
+        # like the frontend `AgentStep` interface (snake_case on the wire).
+        steps: list[dict[str, Any]] = []
+        current_step: dict[str, Any] | None = None
 
         # Wrap adapter as a LangChain chat model and bind the step temperature.
         chat_model = self._build_chat_model(adapter, request)
@@ -206,6 +231,89 @@ class AgentService:
             except Exception:  # noqa: BLE001
                 logger.exception("Failed to persist agent error state for message %s", assistant_msg.id)
 
+        if not tools:
+            # No tools armed (no KB selected + no registered skills): skip the
+            # ReAct loop entirely. Running Thought/Action with an empty tool
+            # list makes the model spin on "Action: none" until max-steps.
+            # Instead do a single direct-answer stream that still honors the
+            # AgentTrace SSE contract (one step_start → text → step_end
+            # finish="final"), so the frontend renders one trace card and
+            # lifts the body on finish="final" exactly like the ReAct path.
+            direct_messages = self._build_initial_messages(request, _DIRECT_ANSWER_TEMPLATE)
+            step_count = 1
+            current_step = {
+                "step": 1,
+                "thinking": "",
+                "text": "",
+                "action": None,
+                "observation": None,
+                "retrieved": None,
+                "finish": None,
+            }
+            steps.append(current_step)
+            yield _sse({"type": "step_start", "step": 1, "label": "第 1 步"})
+            try:
+                async for chunk in chat_model._astream(direct_messages, run_manager=None):
+                    msg: AIMessageChunk = chunk.message
+                    thinking_chunk = msg.additional_kwargs.get("thinking") if isinstance(msg.additional_kwargs, dict) else None
+                    if thinking_chunk:
+                        current_step["thinking"] += thinking_chunk
+                        yield _sse({"type": "thinking", "content": thinking_chunk, "step": 1})
+                    if msg.content:
+                        current_step["text"] += msg.content
+                        yield _sse({"type": "text", "content": msg.content, "step": 1})
+            except asyncio.CancelledError:
+                current_step["finish"] = "error"
+                yield _sse({"type": "step_end", "step": 1, "finish": "error"})
+                await persist_error(
+                    content_or_partial=current_step["text"] or "",
+                    thinking="",
+                    metadata={
+                        "agent": True,
+                        "step_count": 1,
+                        "aborted": True,
+                        "tool_calls": [],
+                        "steps": steps,
+                    },
+                )
+                return
+            except Exception as exc:  # noqa: BLE001
+                current_step["finish"] = "error"
+                yield _sse({"type": "step_end", "step": 1, "finish": "error"})
+                await persist_error(
+                    content_or_partial=current_step["text"] or f"[Agent 出错: {exc}]",
+                    thinking="",
+                    metadata={
+                        "agent": True,
+                        "step_count": 1,
+                        "aborted": False,
+                        "tool_calls": [],
+                        "steps": steps,
+                        "error": str(exc),
+                    },
+                )
+                yield _sse({"type": "error", "message": str(exc), "step": 1})
+                return
+            # Direct answer: the whole streamed text IS the final answer — no
+            # "Final Answer:" prefix stripping (the direct prompt forbids the
+            # ReAct format, so the prefix never appears).
+            final_content = current_step["text"]
+            current_step["finish"] = "final"
+            yield _sse({"type": "step_end", "step": 1, "finish": "final"})
+            await persist_done(
+                final_content,
+                "",
+                {
+                    "agent": True,
+                    "step_count": 1,
+                    "aborted": False,
+                    "tool_calls": [],
+                    "steps": steps,
+                },
+            )
+            yield _sse({"type": "done", "finish_reason": "agent", "step": 1})
+            return
+
         try:
             while step_count < max_steps:
                 step_count += 1
@@ -213,6 +321,22 @@ class AgentService:
                 step_label = f"\n\n--- 第 {step_number} 步思考 ---\n"
                 step_thinking = ""
                 step_content = ""
+
+                # Open a new step: emit step_start and seed an in-flight
+                # transcript entry that later events accumulate into.
+                current_step = {
+                    "step": step_number,
+                    "thinking": "",
+                    "text": "",
+                    "action": None,
+                    "observation": None,
+                    "retrieved": None,
+                    "finish": None,
+                }
+                steps.append(current_step)
+                yield _sse(
+                    {"type": "step_start", "step": step_number, "label": f"第 {step_number} 步"}
+                )
 
                 try:
                     async for chunk in chat_model._astream(messages, run_manager=None):
@@ -222,9 +346,11 @@ class AgentService:
                         thinking_chunk = msg.additional_kwargs.get("thinking") if isinstance(msg.additional_kwargs, dict) else None
                         if thinking_chunk:
                             step_thinking += thinking_chunk
+                            current_step["thinking"] += thinking_chunk
                             yield _sse({"type": "thinking", "content": thinking_chunk, "step": step_number})
                         if msg.content:
                             step_content += msg.content
+                            current_step["text"] += msg.content
                             yield _sse({"type": "text", "content": msg.content, "step": step_number})
                         # finish_reason lives in msg.response_metadata; we
                         # emit no event here because the loop terminator is
@@ -235,19 +361,36 @@ class AgentService:
                         # chunk is handled by the soft-stop branch below.
                 except asyncio.CancelledError:
                     aborted = True
+                    current_step["finish"] = "error"
+                    yield _sse({"type": "step_end", "step": step_number, "finish": "error"})
                     await persist_error(
                         content_or_partial=final_content or step_content,
                         thinking=full_thinking + step_label + step_thinking,
-                        metadata={"step_count": step_count, "aborted": True, "tool_calls": tool_calls},
+                        metadata={
+                            "agent": True,
+                            "step_count": step_count,
+                            "aborted": True,
+                            "tool_calls": tool_calls,
+                            "steps": steps,
+                        },
                     )
                     return
                 except Exception as exc:  # noqa: BLE001
+                    current_step["finish"] = "error"
+                    yield _sse({"type": "step_end", "step": step_number, "finish": "error"})
                     await persist_error(
                         content_or_partial=final_content or step_content or f"[Agent 出错: {exc}]",
                         thinking=full_thinking + step_label + step_thinking,
-                        metadata={"step_count": step_count, "aborted": False, "tool_calls": tool_calls, "error": str(exc)},
+                        metadata={
+                            "agent": True,
+                            "step_count": step_count,
+                            "aborted": False,
+                            "tool_calls": tool_calls,
+                            "steps": steps,
+                            "error": str(exc),
+                        },
                     )
-                    yield _sse({"type": "error", "message": str(exc)})
+                    yield _sse({"type": "error", "message": str(exc), "step": step_number})
                     return
 
                 # Persist step-level thinking with explicit boundary.
@@ -262,6 +405,8 @@ class AgentService:
                     # Nothing came back from the model — soft stop to avoid
                     # infinite loops on broken upstreams.
                     final_content = final_content or ""
+                    current_step["finish"] = "empty"
+                    yield _sse({"type": "step_end", "step": step_number, "finish": "empty"})
                     break
 
                 # Final Answer?
@@ -269,6 +414,8 @@ class AgentService:
                 if final_text is not None:
                     final_content = final_text
                     # Skip tool dispatch: this step committed to an answer.
+                    current_step["finish"] = "final"
+                    yield _sse({"type": "step_end", "step": step_number, "finish": "final"})
                     break
 
                 # Tool dispatch?
@@ -277,14 +424,28 @@ class AgentService:
                     matching = next((t for t in tools if t.name == name), None)
                     if matching is None:
                         observation = f"Observation: 未知工具 `{name}`，可用工具：{', '.join(t.name for t in tools) or '（无）'}。"
+                        current_step["observation"] = {"name": name, "content": observation}
                         yield _sse({"type": "observation", "name": name, "step": step_number, "content": observation})
                     else:
+                        current_step["action"] = {"name": name, "input": action_input}
                         yield _sse({"type": "action", "name": name, "step": step_number, "input": action_input})
                         try:
                             observation_text = await matching.ainvoke({"input": action_input})
                         except Exception as exc:  # noqa: BLE001 — keep loop alive
                             observation_text = f"[tool error: {exc}]"
                         observation = f"Observation: {observation_text}"
+                        current_step["observation"] = {"name": name, "content": observation}
+                        # Structured retrieval data channel: tools stash their
+                        # metadata on `_last_metadata`; if it carries chunks we
+                        # emit a `retrieved` event so the frontend can render
+                        # them as cards instead of a flat observation string.
+                        meta = getattr(matching, "_last_metadata", {}) or {}
+                        retrieved = meta.get("chunks")
+                        if retrieved:
+                            current_step["retrieved"] = retrieved
+                            yield _sse(
+                                {"type": "retrieved", "step": step_number, "docs": retrieved}
+                            )
                         yield _sse({"type": "observation", "name": name, "step": step_number, "content": observation})
                         tool_calls.append(
                             {"name": name, "step": step_number, "input": action_input, "output": observation_text}
@@ -293,6 +454,7 @@ class AgentService:
                     # No tool requested (or `Action: none`): emit a no-tool
                     # observation so the next step has something to build on.
                     observation = _NO_TOOL_OBSERVATION
+                    current_step["observation"] = {"name": "none", "content": observation}
                     yield _sse({"type": "observation", "name": "none", "step": step_number, "content": observation})
 
                 # Feed this step back as the assistant turn + observation as
@@ -302,28 +464,50 @@ class AgentService:
 
                 if step_count >= max_steps:
                     final_content = step_content
+                    current_step["finish"] = "max_steps"
                     yield _sse(
                         {
                             "type": "warning",
                             "message": "max-steps-exceeded",
                             "max_steps": max_steps,
+                            "step": step_number,
                         }
                     )
+                    yield _sse({"type": "step_end", "step": step_number, "finish": "max_steps"})
+                else:
+                    current_step["finish"] = "tool"
+                    yield _sse({"type": "step_end", "step": step_number, "finish": "tool"})
         except asyncio.CancelledError:
             aborted = True
+            # Outer cancel (e.g. client disconnect between steps). step_number
+            # may be unbound on the very first iteration; guard it. The inner
+            # try already emitted step_end for in-stream cancels, so we do not
+            # emit another one here — only persist the abort metadata.
             await persist_error(
                 content_or_partial=final_content,
                 thinking=full_thinking,
-                metadata={"step_count": step_count, "aborted": True, "tool_calls": tool_calls},
+                metadata={
+                    "agent": True,
+                    "step_count": step_count,
+                    "aborted": True,
+                    "tool_calls": tool_calls,
+                    "steps": steps,
+                },
             )
             return
 
         await persist_done(
             final_content,
             full_thinking,
-            {"step_count": step_count, "aborted": aborted, "tool_calls": tool_calls},
+            {
+                "agent": True,
+                "step_count": step_count,
+                "aborted": aborted,
+                "tool_calls": tool_calls,
+                "steps": steps,
+            },
         )
-        yield _sse({"type": "done", "finish_reason": "agent"})
+        yield _sse({"type": "done", "finish_reason": "agent", "step": step_count})
 
     # ------------------------------------------------------------------ helpers
 

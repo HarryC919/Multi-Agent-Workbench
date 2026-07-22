@@ -46,6 +46,12 @@ export function useChatStream(): UseChatStreamReturn {
 
     const now = new Date().toISOString()
 
+    // Read mode + KB fresh from the store (not the captured snapshot) so a
+    // toggle / KB change between renders isn't missed. agentMode is hoisted
+    // before the placeholder so the agent message is tagged at creation.
+    const agentMode = useWorkspaceStore.getState().agentMode
+    const ragKnowledgeBaseId = useWorkspaceStore.getState().selectedKbId || undefined
+
     const userMessage: Message = {
       id: nanoid(),
       conversationId: resolvedId,
@@ -64,6 +70,10 @@ export function useChatStream(): UseChatStreamReturn {
       model: store.selectedModel,
       status: 'streaming',
       createdAt: now,
+      // Phase 2b-ii: agent messages are tagged `metadata.agent` + an empty
+      // steps array so MessageItem renders AgentTrace from the first
+      // step_start event. Plain chat leaves metadata unset.
+      ...(agentMode ? { metadata: { agent: true, steps: [] } } : {}),
     }
 
     store.addMessage(userMessage)
@@ -77,15 +87,12 @@ export function useChatStream(): UseChatStreamReturn {
         content: f.textContent,
       }))
 
-    // Agent mode (phase 2a) routes to /api/agent-chat — emits the same
-    // text/thinking stream plus action/observation events. We render the
-    // ReAct transcript as the assistant's body+thinking so the existing
-    // MessageItem / ThinkingBlock components work without changes.
-    const agentMode = useWorkspaceStore.getState().agentMode
-    // Read KB id fresh from the store (not the captured snapshot) so a KB
-    // selection change in ChatHeader between renders isn't missed.
-    const ragKnowledgeBaseId = useWorkspaceStore.getState().selectedKbId || undefined
-
+    // Agent mode (phase 2a/2b-ii) routes to /api/agent-chat. The transcript
+    // is accumulated into `metadata.steps` (one AgentStep per step_start) and
+    // rendered by AgentTrace; the assistant body keeps ONLY the final answer
+    // (lifted from the step whose finish==="final", minus the "Final Answer:"
+    // prefix). `thinking` stays empty for agent messages — the trace is the
+    // whole reasoning surface.
     if (agentMode) {
       const { abort } = sendAgentChatStream(
         {
@@ -98,19 +105,40 @@ export function useChatStream(): UseChatStreamReturn {
           ragKnowledgeBaseId,
         },
         {
-          onText: (text) => {
-            store.appendToAssistant(text)
+          onStepStart: (step) => {
+            store.appendAgentStep(step, `第 ${step} 步`)
           },
           onThinking: (text) => {
-            store.appendToAssistantThinking(text)
+            store.appendAgentStepThinking(text)
           },
-          onAction: (name, input, step) => {
-            const line = `\n[Step ${step}] Action: ${name}(${input})\n`
-            store.appendToAssistantThinking(line)
+          onText: (text) => {
+            store.appendAgentStepText(text)
           },
-          onObservation: (name, observation, step) => {
-            const line = `\n[Step ${step}] Observation(${name}): ${observation}\n`
-            store.appendToAssistantThinking(line)
+          onAction: (name, input) => {
+            store.setAgentStepAction(name, input)
+          },
+          onObservation: (name, content) => {
+            store.setAgentStepObservation(name, content)
+          },
+          onRetrieved: (_step, docs) => {
+            store.setAgentStepRetrieved(docs)
+          },
+          onStepEnd: (step, finish) => {
+            store.completeAgentStep(step, finish)
+            // Lift the final answer into the message body. The backend emits
+            // a `text` event for every step (Thought/Action/Final Answer),
+            // so only the finish==="final" step's accumulated text becomes
+            // the visible reply — after stripping the "Final Answer:" prefix.
+            if (finish === 'final') {
+              const conv = useWorkspaceStore.getState().currentConversation
+              const last = conv?.messages?.[conv.messages.length - 1]
+              const steps = ((last?.metadata as Record<string, unknown> | undefined)?.steps as
+                | { text?: string }[]
+                | undefined) ?? []
+              const cur = steps[steps.length - 1]
+              const body = (cur?.text ?? '').replace(/^[\s\S]*?Final Answer:\s*/i, '')
+              if (body) store.appendToAssistant(body)
+            }
           },
           onWarning: (message) => {
             const msg = message || 'agent-limit'

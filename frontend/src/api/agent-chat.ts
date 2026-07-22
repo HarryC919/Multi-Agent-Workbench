@@ -1,4 +1,4 @@
-import type { AgentChatRequest, ChatChunk } from '@/types'
+import type { AgentChatRequest, ChatChunk, RetrievedChunkDoc } from '@/types'
 
 export interface AgentStreamCallbacks {
   onChunk?: (chunk: ChatChunk) => void
@@ -10,13 +10,19 @@ export interface AgentStreamCallbacks {
   onDone?: (finishReason: string) => void
   onError?: (error: Error) => void
   onFinally?: () => void
+  // Phase 2b-ii: step-bounded events.
+  onStepStart?: (step: number, label: string) => void
+  onStepEnd?: (step: number, finish: string) => void
+  onRetrieved?: (step: number, docs: RetrievedChunkDoc[]) => void
 }
 
 /**
- * Streams an `/api/agent-chat` SSE response. Phase 2a of AgentService:
- * emits `text` / `thinking` / `action` / `observation` / `warning` / `done`
- * / `error` events. The chunk parser mirrors chat.ts so that abort / stream
- * close trailing fallbacks behave identically.
+ * Streams an `/api/agent-chat` SSE response. Phase 2a of AgentService emits
+ * flat `text` / `thinking` / `action` / `observation` / `warning` / `done`
+ * / `error` events; phase 2b-ii adds step-bounded `step_start` / `step_end`
+ * / `retrieved` events in parallel (kept backward compatible). The chunk
+ * parser mirrors chat.ts so that abort / stream close trailing fallbacks
+ * behave identically.
  */
 export function sendAgentChatStream(
   request: AgentChatRequest,
@@ -109,6 +115,32 @@ export function sendAgentChatStream(
               case 'error':
                 if (chunk.message) callbacks.onError?.(new Error(chunk.message))
                 break
+              case 'step_start':
+                callbacks.onStepStart?.(chunk.step ?? 0, chunk.label ?? '')
+                break
+              case 'step_end':
+                callbacks.onStepEnd?.(chunk.step ?? 0, chunk.finish ?? '')
+                break
+              case 'retrieved': {
+                // SSE parsing has no camelCase interceptor (see chat.ts), so
+                // docs arrive snake-cased on the wire — map them explicitly.
+                const rawDocs = (chunk.docs ?? []) as Array<{
+                  doc_id?: string
+                  filename?: string
+                  heading?: string | null
+                  score?: number
+                  text?: string
+                }>
+                const docs: RetrievedChunkDoc[] = rawDocs.map((d) => ({
+                  docId: d.doc_id ?? '',
+                  filename: d.filename ?? '',
+                  heading: d.heading ?? null,
+                  score: d.score ?? 0,
+                  text: d.text ?? '',
+                }))
+                callbacks.onRetrieved?.(chunk.step ?? 0, docs)
+                break
+              }
             }
           } catch {
             // Ignore malformed SSE lines

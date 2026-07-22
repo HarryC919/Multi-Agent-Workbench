@@ -1,14 +1,51 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import type { StoreApi } from 'zustand'
 import { nanoid } from 'nanoid'
 import type {
+  AgentStep,
   Conversation,
   ConversationDetail,
   KnowledgeBase,
   Message,
   ModelConfig,
+  RetrievedChunkDoc,
   UploadedFile,
 } from '@/types'
+
+/**
+ * Mutates the in-flight agent step (tail of the last assistant message's
+ * `metadata.steps`) in place. Mirrors the `appendToAssistantThinking` shape:
+ * shallow-copy the messages array, mutate the streaming assistant's last
+ * step via `mutate`, then commit. No-op when there is no in-flight step.
+ *
+ * Phase 2b-ii: agent messages keep `thinking` empty — the whole ReAct
+ * transcript lives in `metadata.steps`, so this is the only accumulation
+ * path the agent branch uses.
+ */
+function mutateLastStep(
+  api: StoreApi<WorkspaceState>,
+  mutate: (step: AgentStep) => void,
+): void {
+  api.setState((state) => {
+    if (!state.currentConversation) return state
+    const messages = [...(state.currentConversation.messages || [])]
+    const lastMessage = messages[messages.length - 1]
+    if (!lastMessage || lastMessage.role !== 'assistant') return state
+    const meta = (lastMessage.metadata ?? {}) as Record<string, unknown>
+    const steps = ((meta.steps as AgentStep[]) ?? []).slice()
+    const current = steps[steps.length - 1]
+    if (!current) return state
+    // Clone the in-flight step so React sees a new reference.
+    const next: AgentStep = { ...current }
+    mutate(next)
+    steps[steps.length - 1] = next
+    lastMessage.metadata = { ...meta, agent: true, steps }
+    return {
+      currentConversation: { ...state.currentConversation, messages },
+    }
+  })
+}
 
 interface WorkspaceState {
   // Conversations
@@ -52,6 +89,15 @@ interface WorkspaceState {
   addMessage: (message: Message) => void
   appendToAssistant: (content: string) => void
   appendToAssistantThinking: (thinking: string) => void
+  // Phase 2b-ii: agent step transcript actions. These operate on the last
+  // assistant message's `metadata.steps` array (in-flight step at the tail).
+  appendAgentStep: (step: number, label: string) => void
+  appendAgentStepThinking: (text: string) => void
+  appendAgentStepText: (text: string) => void
+  setAgentStepAction: (name: string, input: string) => void
+  setAgentStepObservation: (name: string, content: string) => void
+  setAgentStepRetrieved: (docs: RetrievedChunkDoc[]) => void
+  completeAgentStep: (step: number, finish: string) => void
   setAssistantStatus: (status: Message['status']) => void
   setStreaming: (streaming: boolean) => void
   loadModels: () => Promise<void>
@@ -66,7 +112,7 @@ interface WorkspaceState {
 
 export const useWorkspaceStore = create<WorkspaceState>()(
   persist(
-    (set, get) => ({
+    (set, get, api) => ({
       conversations: [],
       activeId: null,
       currentConversation: null,
@@ -229,6 +275,69 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           return {
             currentConversation: { ...state.currentConversation, messages },
           }
+        })
+      },
+
+      // Phase 2b-ii: agent step transcript. Each action mutates the in-flight
+      // step (tail of `metadata.steps`) on the streaming assistant message.
+      // `appendAgentStep` seeds the agent marker + steps array if absent.
+      appendAgentStep: (step, _label) => {
+        set((state) => {
+          if (!state.currentConversation) return state
+          const messages = [...(state.currentConversation.messages || [])]
+          const lastMessage = messages[messages.length - 1]
+          if (!lastMessage || lastMessage.role !== 'assistant') return state
+          const meta = (lastMessage.metadata ?? {}) as Record<string, unknown>
+          const steps = ((meta.steps as AgentStep[]) ?? []).slice()
+          steps.push({
+            step,
+            thinking: '',
+            text: '',
+            action: null,
+            observation: null,
+            retrieved: null,
+            finish: null,
+          })
+          lastMessage.metadata = { ...meta, agent: true, steps }
+          return {
+            currentConversation: { ...state.currentConversation, messages },
+          }
+        })
+      },
+
+      appendAgentStepThinking: (text) => {
+        mutateLastStep(api, (s) => {
+          s.thinking += text
+        })
+      },
+
+      appendAgentStepText: (text) => {
+        mutateLastStep(api, (s) => {
+          s.text += text
+        })
+      },
+
+      setAgentStepAction: (name, input) => {
+        mutateLastStep(api, (s) => {
+          s.action = { name, input }
+        })
+      },
+
+      setAgentStepObservation: (name, content) => {
+        mutateLastStep(api, (s) => {
+          s.observation = { name, content }
+        })
+      },
+
+      setAgentStepRetrieved: (docs) => {
+        mutateLastStep(api, (s) => {
+          s.retrieved = docs
+        })
+      },
+
+      completeAgentStep: (step, finish) => {
+        mutateLastStep(api, (s) => {
+          if (s.step === step) s.finish = finish
         })
       },
 
