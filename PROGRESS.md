@@ -8,18 +8,18 @@
 | ------------------------------------------------ | --------- | ------------------------------------------------------------------------------------------------------ |
 | 后端框架（FastAPI + SQLAlchemy async）           | ✅ 完成   | 路由、模型、会话服务、适配器层均已搭建                                                                 |
 | 前端框架（React + Zustand + Vite）               | ✅ 完成   | 布局、侧边栏、聊天区、输入区、状态管理                                                                 |
-| 模型列表拉取                                     | ✅ 可用   | `/api/models` 从 DB 读取 seed 模型                                                                     |
+| 模型列表拉取                                     | ✅ 可用   | `/api/models` 从 DB 读取 seed 模型                                                                   |
 | 多 vendor 适配器（OpenAI/Anthropic/Gemini/兼容） | ✅ 完成   | OpenAI 兼容流式已实测打通（DeepSeek 200）                                                              |
 | 单轮对话（流式）                                 | ✅ 可用   | 选有 key 的模型（DeepSeek/Kimi）可正常对话                                                             |
-| 连续对话（多轮）                                 | ✅ 已修复 | 每轮创建独立 assistant 占位；流结束兜底复位；`abort` 已接到 UI                                         |
+| 连续对话（多轮）                                 | ✅ 已修复 | 每轮创建独立 assistant 占位；流结束兜底复位；`abort` 已接到 UI                                       |
 | 文件上传与发送                                   | ✅ 已修复 | 支持 txt/md/pdf/docx 及常见代码文件；字段映射已修复                                                    |
-| 消息列表渲染（无重叠）                           | ✅ 已修复 | 虚拟列表加 `measureElement` 动态测高，流式增长不再重叠                                                 |
-| 会话右键菜单 + 删除确认                          | ✅ 已修复 | 右键 / ⋯ 按钮双入口；删除前确认弹窗                                                                    |
-| 开始界面直接发送自动建会话                       | ✅ 已修复 | 空状态下发送自动 `createConversation` 再发送                                                           |
-| 模型管理 UI（CRUD）                              | ✅ 已完成 | ChatHeader 入口 → Modal 弹窗，含列表/启停/新增/编辑/删除                                               |
+| 消息列表渲染（无重叠）                           | ✅ 已修复 | 虚拟列表加`measureElement` 动态测高，流式增长不再重叠                                                |
+| 会话右键菜单 + 删除确认                          | ✅ 已修复 | 右键 / ⋯ 按钮双入口；删除前确认弹窗                                                                   |
+| 开始界面直接发送自动建会话                       | ✅ 已修复 | 空状态下发送自动`createConversation` 再发送                                                          |
+| 模型管理 UI（CRUD）                              | ✅ 已完成 | ChatHeader 入口 → Modal 弹窗，含列表/启停/新增/编辑/删除                                              |
 | 模型级 API Key                                   | ✅ 已完成 | ModelConfig 加 api_key 字段；compatible 模型可填 key，factory 优先用模型 key 回退 .env；key 不回传明文 |
 | 会话标题自动生成                                 | ✅ 已实现 | 后端 service 层按首条消息前 50 字生成（已验证）                                                        |
-| 凭证/环境配置                                    | ✅ 已修复 | 见 [已完成的修复](#三已完成的修复)                                                                     |
+| 凭证/环境配置                                    | ✅ 已修复 | 见[已完成的修复](#三已完成的修复)                                                                       |
 
 ---
 
@@ -97,19 +97,19 @@
 **改动文件**：
 
 - `frontend/src/api/chat.ts`
-    - 新增 `onFinally` 回调，保证流式请求任何退出路径（`onDone` / `onError` / 流自然关闭 / 用户中止）都会触发复位。
-    - 流正常关闭但未收到 `{type:'done'}` 时，自动补发 `onDone('stop')` 兜底。
+  - 新增 `onFinally` 回调，保证流式请求任何退出路径（`onDone` / `onError` / 流自然关闭 / 用户中止）都会触发复位。
+  - 流正常关闭但未收到 `{type:'done'}` 时，自动补发 `onDone('stop')` 兜底。
 - `frontend/src/hooks/useChatStream.ts`
-    - 用 `onFinally` 统一复位 `isStreaming`。
-    - 返回真实 `abort()` 函数，并支持发送新消息前自动中止旧流。
+  - 用 `onFinally` 统一复位 `isStreaming`。
+  - 返回真实 `abort()` 函数，并支持发送新消息前自动中止旧流。
 - `frontend/src/components/InputArea.tsx`
-    - 流式中显示"停止"按钮，调用 `onAbort`。
+  - 流式中显示"停止"按钮，调用 `onAbort`。
 - `frontend/src/components/WorkspaceLayout.tsx`
-    - 把 `abort` 从 `useChatStream` 传给 `InputArea`。
+  - 把 `abort` 从 `useChatStream` 传给 `InputArea`。
 - `frontend/src/api/upload.ts`
-    - 上传响应用 `snakeToCamel` 转换，修复 `fileId` / `textContent` 为 `undefined` 的问题。
+  - 上传响应用 `snakeToCamel` 转换，修复 `fileId` / `textContent` 为 `undefined` 的问题。
 - `frontend/src/hooks/useChatStream.ts`
-    - 过滤掉 `name` 或 `textContent` 为空的附件，避免把坏文件发给后端。
+  - 过滤掉 `name` 或 `textContent` 为空的附件，避免把坏文件发给后端。
 
 ---
 
@@ -120,17 +120,17 @@
 **改动文件**：
 
 - `frontend/src/hooks/useChatStream.ts`
-    - 发送新消息前自动中止旧的流式请求。
-    - 每轮对话独立创建新的 assistant 占位消息，避免把新回答追加到上一轮已完成的回答里。
+  - 发送新消息前自动中止旧的流式请求。
+  - 每轮对话独立创建新的 assistant 占位消息，避免把新回答追加到上一轮已完成的回答里。
 - `frontend/src/store/workspaceStore.ts`
-    - `appendToAssistant` / `setAssistantStatus` 只操作状态为 `streaming` 的最后一条 assistant 消息，防止已结束的消息被误改。
+  - `appendToAssistant` / `setAssistantStatus` 只操作状态为 `streaming` 的最后一条 assistant 消息，防止已结束的消息被误改。
 - `frontend/src/components/InputArea.tsx`
-    - 用 `validator` 替代严格 MIME 类型过滤，支持 `.md` 及各类代码文件上传。
+  - 用 `validator` 替代严格 MIME 类型过滤，支持 `.md` 及各类代码文件上传。
 - `backend/app/services/file_parser.py`
-    - 扩展支持的文本扩展名：`.md`、`.json`、`.yaml`、代码文件（`.py`、`.js`、`.ts` 等）、`.csv`、`.log` 等。
-    - 对未知扩展名增加 UTF-8 文本启发式检测，无扩展名的纯文本文件也能上传。
+  - 扩展支持的文本扩展名：`.md`、`.json`、`.yaml`、代码文件（`.py`、`.js`、`.ts` 等）、`.csv`、`.log` 等。
+  - 对未知扩展名增加 UTF-8 文本启发式检测，无扩展名的纯文本文件也能上传。
 - `backend/app/routers/upload.py`
-    - 改为读取文件内容后做启发式检测，兼容无扩展名或扩展名不在白名单的文本文件。
+  - 改为读取文件内容后做启发式检测，兼容无扩展名或扩展名不在白名单的文本文件。
 
 ---
 
@@ -148,9 +148,9 @@
 
 - 需求：右键历史会话出二级菜单含"重命名 / 删除"，与现有 ⋯ 按钮菜单并存。
 - 修复 [ConversationList.tsx](frontend/src/components/ConversationList.tsx)：
-    - 会话项加 `onContextMenu`，右键弹 `position: fixed` 浮层菜单，定位到鼠标位置并做视口边缘 clamp。
-    - 抽出 `renderMenuItems` 供右键菜单和 ⋯ 按钮菜单共用。
-    - 外部点击 / Esc 关闭菜单：用 `target.closest('[data-menu]')` 判断点击是否落在菜单内——**关键**，不能无差别 `mousedown` 关闭，否则 `mousedown` 先于 `click` 触发会卸载菜单项导致 `onClick` 失效（⋯ 菜单的删除/重命名曾因此失效）。
+  - 会话项加 `onContextMenu`，右键弹 `position: fixed` 浮层菜单，定位到鼠标位置并做视口边缘 clamp。
+  - 抽出 `renderMenuItems` 供右键菜单和 ⋯ 按钮菜单共用。
+  - 外部点击 / Esc 关闭菜单：用 `target.closest('[data-menu]')` 判断点击是否落在菜单内——**关键**，不能无差别 `mousedown` 关闭，否则 `mousedown` 先于 `click` 触发会卸载菜单项导致 `onClick` 失效（⋯ 菜单的删除/重命名曾因此失效）。
 
 **问题 3：删除确认弹窗**
 
@@ -187,10 +187,10 @@
 
 - 背景：后端 `/api/models` CRUD、前端 `api/models.ts` 封装、store 的 `addModel/updateModel/removeModel` 全部已就绪，只缺前端组件。UI 库无 Dialog 组件。
 - 新增文件：
-    - [frontend/src/components/ui/modal.tsx](frontend/src/components/ui/modal.tsx)：可复用 Modal，遮罩/卡片用内联 `backgroundColor`（沿用修复 D 的 Tailwind v4 坑规避）。
-    - [frontend/src/components/ModelManager.tsx](frontend/src/components/ModelManager.tsx)：模型管理弹窗。列表（名称/id/vendor/adapterType + 启停切换 + 编辑 + 删除）、新增/编辑表单（model_id/名称/vendor/adapterType 下拉 5 枚举/base_url/启用开关）、删除二次确认。`fetchAllModels` 拉全部（含禁用），操作后同步 store 与重载列表。
+  - [frontend/src/components/ui/modal.tsx](frontend/src/components/ui/modal.tsx)：可复用 Modal，遮罩/卡片用内联 `backgroundColor`（沿用修复 D 的 Tailwind v4 坑规避）。
+  - [frontend/src/components/ModelManager.tsx](frontend/src/components/ModelManager.tsx)：模型管理弹窗。列表（名称/id/vendor/adapterType + 启停切换 + 编辑 + 删除）、新增/编辑表单（model_id/名称/vendor/adapterType 下拉 5 枚举/base_url/启用开关）、删除二次确认。`fetchAllModels` 拉全部（含禁用），操作后同步 store 与重载列表。
 - 改动文件：
-    - [frontend/src/components/ChatHeader.tsx](frontend/src/components/ChatHeader.tsx)：加"模型管理"按钮（Settings2 图标）+ `ModelManager` 弹窗状态。
+  - [frontend/src/components/ChatHeader.tsx](frontend/src/components/ChatHeader.tsx)：加"模型管理"按钮（Settings2 图标）+ `ModelManager` 弹窗状态。
 
 **验证**：前端 `tsc -b` 干净、`oxlint` 无新问题、`npm run build` 成功；后端 29 测试全过；实测模型 CRUD API（创建/禁用/active 列表排除/删除/数据回归）全链路 200。
 
@@ -211,16 +211,16 @@
 **改动文件**：
 
 - 后端
-    - [backend/app/models.py](backend/app/models.py)：ModelConfig 加 `api_key` 字段。
-    - [backend/main.py](backend/main.py)：lifespan 加轻量迁移 `ALTER TABLE model_configs ADD COLUMN api_key`（create_all 不改已有表，try/except 兼容已升级的 DB）。
-    - [backend/app/schemas.py](backend/app/schemas.py)：Create/Update 加 `api_key`；Out 加 `has_api_key`，用 `model_validator(mode="before")` 从 ORM 的 `api_key` 派生且**不泄露明文**。
-    - [backend/app/routers/models.py](backend/app/routers/models.py)：所有端点声明 `response_model=ModelConfigOut` 防泄露；PUT 时 `api_key` 未传=不变、传 null=清空、传字符串=更新。
-    - [backend/app/adapters/factory.py](backend/app/adapters/factory.py)：`get_adapter` 加 `api_key` 参数，优先用模型 key 回退 vendor key；`get_adapter_by_model_id` 传入 `config.api_key`。错误提示补充"或通过模型管理 UI 提供 key"。
-    - [backend/tests/conftest.py](backend/tests/conftest.py)：测试 DB 加同样的 ALTER TABLE 迁移。
+  - [backend/app/models.py](backend/app/models.py)：ModelConfig 加 `api_key` 字段。
+  - [backend/main.py](backend/main.py)：lifespan 加轻量迁移 `ALTER TABLE model_configs ADD COLUMN api_key`（create_all 不改已有表，try/except 兼容已升级的 DB）。
+  - [backend/app/schemas.py](backend/app/schemas.py)：Create/Update 加 `api_key`；Out 加 `has_api_key`，用 `model_validator(mode="before")` 从 ORM 的 `api_key` 派生且**不泄露明文**。
+  - [backend/app/routers/models.py](backend/app/routers/models.py)：所有端点声明 `response_model=ModelConfigOut` 防泄露；PUT 时 `api_key` 未传=不变、传 null=清空、传字符串=更新。
+  - [backend/app/adapters/factory.py](backend/app/adapters/factory.py)：`get_adapter` 加 `api_key` 参数，优先用模型 key 回退 vendor key；`get_adapter_by_model_id` 传入 `config.api_key`。错误提示补充"或通过模型管理 UI 提供 key"。
+  - [backend/tests/conftest.py](backend/tests/conftest.py)：测试 DB 加同样的 ALTER TABLE 迁移。
 - 前端
-    - [frontend/src/types/index.ts](frontend/src/types/index.ts)：ModelConfig 加 `hasApiKey?`。
-    - [frontend/src/api/models.ts](frontend/src/api/models.ts)：createModel 传 `api_key`；updateModel 用 `ModelUpdatePayload`，**只发送设置的 `apiKey` 字段**（undefined 丢弃，配合后端 exclude_unset 的"不变"语义）。
-    - [frontend/src/components/ModelManager.tsx](frontend/src/components/ModelManager.tsx)：表单加 API Key 输入框（password 类型）。兼容适配器（openai/anthropic compatible）新建时必填 key；编辑时留空=保持不变、输入新值=替换，hint 区分"已配置/未配置"。列表加"已配Key"徽标。
+  - [frontend/src/types/index.ts](frontend/src/types/index.ts)：ModelConfig 加 `hasApiKey?`。
+  - [frontend/src/api/models.ts](frontend/src/api/models.ts)：createModel 传 `api_key`；updateModel 用 `ModelUpdatePayload`，**只发送设置的 `apiKey` 字段**（undefined 丢弃，配合后端 exclude_unset 的"不变"语义）。
+  - [frontend/src/components/ModelManager.tsx](frontend/src/components/ModelManager.tsx)：表单加 API Key 输入框（password 类型）。兼容适配器（openai/anthropic compatible）新建时必填 key；编辑时留空=保持不变、输入新值=替换，hint 区分"已配置/未配置"。列表加"已配Key"徽标。
 
 **验证**：
 
@@ -236,21 +236,23 @@
 
 按优先级排序：
 
-- [x] **修复问题 2（文件发送）**：`upload.ts` 加 camelCase 转换。
-- [x] **修复问题 1（连续对话）**：`sendChatStream` 加流结束兜底复位 `isStreaming`；把 `abort` 接到 UI。
-- [x] **修复消息列表重叠**：虚拟列表动态测高。
-- [x] **右键删除会话 + 确认弹窗**。
-- [x] **问题待修复**：在开始界面直接在下面的对话框输入问题发送后不会自动生成新会话 → 已修复（`WorkspaceLayout.handleSend` 空状态先 `createConversation`）。
-- [x] **端到端验证连续对话 + 文件发送两个场景**。
-- [x] **会话标题自动生成（当前后端已实现，前端需验证）**：已确认后端 `conversation_service.add_message` 按首条消息前 50 字生成标题，修好"开始界面发送"后自动生效。
-- [x] **模型管理 UI（后端 CRUD 已就绪，前端已接）**：ChatHeader "模型管理" 按钮 → Modal 弹窗，列表 + 启停 + 新增/编辑表单 + 删除确认。
-- [x] **跨平台兼容**：根 `.gitignore` + `frontend/.npmrc`；`backend/pyproject.toml` 拆出 `uvicorn[standard]` 平台相关的 `watchfiles`/`httptools`/`uvloop` 用 PEP 508 marker 仅在非 Windows 安装，Windows 走纯 asyncio loop；新增 `.github/workflows/ci.yml` 三平台 matrix（ubuntu/windows/macos × 前后端）。
-- [x] **部署交付物**：补齐前后端 `Dockerfile` + 根目录 `docker-compose.yml` + `frontend/nginx.conf`，实现 `docker compose up` 一键启动（DEVELOPMENT_PLAN 验收标准第 7 条）。
-- [x] **性能验证**：构造 1000 条消息会话，`frontend/tests/perf/MessageList.bench.tsx` 自动 bench 挂载耗时；`scripts/seed-1000msgs.py` 手动灌库用来 dev 实测滚动流畅度（DEVELOPMENT_PLAN 验收标准第 5 条）。
-- [x] **前端关键 hook 测试**：新增 `vitest` + `@testing-library/react` + `jsdom`；`frontend/tests/hooks/{useChatStream,useConversation}.test.ts` 7 个用例覆盖流式 chunk 拼接 / done / error / abort / onFinally / 装载会话与模型。
-- [x] **Skills 挂载开发**：新增 `backend/app/skills/` 包（`base.py` Skill Protocol、`registry.py` 启动扫描、`echo.py` + `current_time.py` 示例）；重写 `routers/skills.py` 为 `{status,skill,output,metadata,message}` 统一信封；新增 6 个 `test_skills.py` 用例。
-- [x] **多轮推理（AgentService 第一期）**：新增 `backend/app/services/agent_service.py` 编排层，与 `conversation_service.py` 平级，仅支持多轮推理（ReAct 思考链），**不含 tool calling / RAG**，保持现有 Adapter + Streaming 架构不动。详见第十三节工作记录。
+- [X] **修复问题 2（文件发送）**：`upload.ts` 加 camelCase 转换。
+- [X] **修复问题 1（连续对话）**：`sendChatStream` 加流结束兜底复位 `isStreaming`；把 `abort` 接到 UI。
+- [X] **修复消息列表重叠**：虚拟列表动态测高。
+- [X] **右键删除会话 + 确认弹窗**。
+- [X] **问题待修复**：在开始界面直接在下面的对话框输入问题发送后不会自动生成新会话 → 已修复（`WorkspaceLayout.handleSend` 空状态先 `createConversation`）。
+- [X] **端到端验证连续对话 + 文件发送两个场景**。
+- [X] **会话标题自动生成（当前后端已实现，前端需验证）**：已确认后端 `conversation_service.add_message` 按首条消息前 50 字生成标题，修好"开始界面发送"后自动生效。
+- [X] **模型管理 UI（后端 CRUD 已就绪，前端已接）**：ChatHeader "模型管理" 按钮 → Modal 弹窗，列表 + 启停 + 新增/编辑表单 + 删除确认。
+- [X] **跨平台兼容**：根 `.gitignore` + `frontend/.npmrc`；`backend/pyproject.toml` 拆出 `uvicorn[standard]` 平台相关的 `watchfiles`/`httptools`/`uvloop` 用 PEP 508 marker 仅在非 Windows 安装，Windows 走纯 asyncio loop；新增 `.github/workflows/ci.yml` 三平台 matrix（ubuntu/windows/macos × 前后端）。
+- [X] **部署交付物**：补齐前后端 `Dockerfile` + 根目录 `docker-compose.yml` + `frontend/nginx.conf`，实现 `docker compose up` 一键启动（DEVELOPMENT_PLAN 验收标准第 7 条）。
+- [X] **性能验证**：构造 1000 条消息会话，`frontend/tests/perf/MessageList.bench.tsx` 自动 bench 挂载耗时；`scripts/seed-1000msgs.py` 手动灌库用来 dev 实测滚动流畅度（DEVELOPMENT_PLAN 验收标准第 5 条）。
+- [X] **前端关键 hook 测试**：新增 `vitest` + `@testing-library/react` + `jsdom`；`frontend/tests/hooks/{useChatStream,useConversation}.test.ts` 7 个用例覆盖流式 chunk 拼接 / done / error / abort / onFinally / 装载会话与模型。
+- [X] **Skills 挂载开发**：新增 `backend/app/skills/` 包（`base.py` Skill Protocol、`registry.py` 启动扫描、`echo.py` + `current_time.py` 示例）；重写 `routers/skills.py` 为 `{status,skill,output,metadata,message}` 统一信封；新增 6 个 `test_skills.py` 用例。
+- [X] **多轮推理（AgentService 第一期）**：新增 `backend/app/services/agent_service.py` 编排层，与 `conversation_service.py` 平级，仅支持多轮推理（ReAct 思考链），**不含 tool calling / RAG**，保持现有 Adapter + Streaming 架构不动。详见第十三节工作记录。
+
 - [~] **AgentService 第二期（2a：LangChain + Tool Calling，不含 RAG）**：完成 LangChain/LangGraph 引入、Skill → LangChain Tool 桥、temperature 透传到 adapter、SSE `action`/`observation`/`warning` 事件、`Message.metadata` JSON 列持久化 step_count/aborted/tool_calls、前端 Agent 模式 toggle。详见第十四节工作记录。**2b（RAG + 知识库 UI + Agent 轨迹面板）仍待启动。**
+
 - [ ] **AgentService 第二期**：在 AgentService 内部引入 LangChain/LangGraph（范围严格限制在该模块内），叠加 **Tool Calling** 与 **RAG**（markdown 笔记检索）能力；Skills 挂载可在此之后接入。
 
 ---
@@ -313,29 +315,29 @@
 ### 改动文件
 
 - 跨平台兼容
-    - [.gitignore](.gitignore)：根目录新增统一 gitignore，合并前后端规则；解决 `frontend/workbench.db` 等脏文件之前被纳入版本控制的问题。
-    - [frontend/.npmrc](frontend/.npmrc)：`fund=false` / `audit=false`，CI 输出更安静；**不再设 `optional=false`**（曾误以为该选项是"启用可选依赖"，实际反向——会跳过 `@rollup/*` 平台子包导致 rollup 启动报错，已撤销）。
-    - [backend/pyproject.toml](backend/pyproject.toml)：把 `uvicorn[standard]` 拆为基础 `uvicorn` + `watchfiles` / `httptools` / `uvloop`，三者各加 `; platform_system != 'Windows'` PEP 508 marker，使 Windows 走纯 asyncio loop（无 Rust/C 扩展构建失败），其他平台继续享受 fast loop 与 `--reload`。
-    - [.github/workflows/ci.yml](.github/workflows/ci.yml)：新增 GHA workflow，matrix `[ubuntu-latest, windows-latest, macos-latest]` × `{backend: uv sync --frozen → uv run pytest, frontend: npm ci → npm run lint → npm run test → npm run build}`。`fail-fast: false` 以便看到三平台各自的真实失败。
+  - [.gitignore](.gitignore)：根目录新增统一 gitignore，合并前后端规则；解决 `frontend/workbench.db` 等脏文件之前被纳入版本控制的问题。
+  - [frontend/.npmrc](frontend/.npmrc)：`fund=false` / `audit=false`，CI 输出更安静；**不再设 `optional=false`**（曾误以为该选项是"启用可选依赖"，实际反向——会跳过 `@rollup/*` 平台子包导致 rollup 启动报错，已撤销）。
+  - [backend/pyproject.toml](backend/pyproject.toml)：把 `uvicorn[standard]` 拆为基础 `uvicorn` + `watchfiles` / `httptools` / `uvloop`，三者各加 `; platform_system != 'Windows'` PEP 508 marker，使 Windows 走纯 asyncio loop（无 Rust/C 扩展构建失败），其他平台继续享受 fast loop 与 `--reload`。
+  - [.github/workflows/ci.yml](.github/workflows/ci.yml)：新增 GHA workflow，matrix `[ubuntu-latest, windows-latest, macos-latest]` × `{backend: uv sync --frozen → uv run pytest, frontend: npm ci → npm run lint → npm run test → npm run build}`。`fail-fast: false` 以便看到三平台各自的真实失败。
 - 部署交付物
-    - [backend/Dockerfile](backend/Dockerfile) + [backend/.dockerignore](backend/.dockerignore)：基于 `ghcr.io/astral-sh/uv:python3.11-bookworm-slim`，`uv sync --frozen --no-dev` 仅装运行时依赖；DB 放 `/app/data` 卷。
-    - [frontend/Dockerfile](frontend/Dockerfile) + [frontend/.dockerignore](frontend/.dockerignore)：多阶段，`node:20-alpine` build → `nginx:alpine` 托管 `dist/`。
-    - [docker-compose.yml](docker-compose.yml)：`backend` + `frontend` 两服务；backend 挂 `./backend/.env:ro` 与命名的 `backend-data` 卷；frontend 暴露 80；带 healthcheck 让 frontend 等 backend `/health` 就绪后启动。
-    - [frontend/nginx.conf](frontend/nginx.conf)：`/api/` → `proxy_pass http://backend:8000`，关闭 `proxy_buffering` 保证 SSE 直通；其余走 `try_files … /index.html` SPA fallback。
+  - [backend/Dockerfile](backend/Dockerfile) + [backend/.dockerignore](backend/.dockerignore)：基于 `ghcr.io/astral-sh/uv:python3.11-bookworm-slim`，`uv sync --frozen --no-dev` 仅装运行时依赖；DB 放 `/app/data` 卷。
+  - [frontend/Dockerfile](frontend/Dockerfile) + [frontend/.dockerignore](frontend/.dockerignore)：多阶段，`node:20-alpine` build → `nginx:alpine` 托管 `dist/`。
+  - [docker-compose.yml](docker-compose.yml)：`backend` + `frontend` 两服务；backend 挂 `./backend/.env:ro` 与命名的 `backend-data` 卷；frontend 暴露 80；带 healthcheck 让 frontend 等 backend `/health` 就绪后启动。
+  - [frontend/nginx.conf](frontend/nginx.conf)：`/api/` → `proxy_pass http://backend:8000`，关闭 `proxy_buffering` 保证 SSE 直通；其余走 `try_files … /index.html` SPA fallback。
 - 性能与测试补齐
-    - [frontend/package.json](frontend/package.json)：新增 devDep `vitest` / `@testing-library/react` / `@testing-library/jest-dom` / `jsdom`；新增 scripts `test` / `test:watch`。
-    - [frontend/vitest.config.ts](frontend/vitest.config.ts) + [frontend/tsconfig.vitest.json](frontend/tsconfig.vitest.json) + [frontend/tests/setup.ts](frontend/tests/setup.ts)：jsdom 环境、`@` alias 沿用、`scrollIntoView` / `ResizeObserver` 在 jsdom 下的 polyfill、`cleanup()` 每用例后挂载卸载。
-    - [frontend/tests/hooks/useChatStream.test.ts](frontend/tests/hooks/useChatStream.test.ts)：4 个用例——文本流拼接 + `done`、纯 `done` 走 `onFinally` 复位 `isStreaming`、`error` chunk 不漏恢复、abort 不产生未捕获异常。
-    - [frontend/tests/hooks/useConversation.test.ts](frontend/tests/hooks/useConversation.test.ts)：2 个用例——装载 conversations + models；HTTP 失败 graceful 不抛。
-    - [frontend/tests/perf/MessageList.bench.tsx](frontend/tests/perf/MessageList.bench.tsx)：构造 1000 条 mock 消息，断言虚拟化包装层挂载且耗时 < 2000ms；为绕过 jsdom 零高度问题临时把 `HTMLElement.prototype.clientHeight` 提升到 800。
-    - [scripts/seed-1000msgs.py](scripts/seed-1000msgs.py)：直接 `sqlite3` 往 `backend/workbench.db` 灌一个会话 + 1000 条交替消息，用于 dev 实测 `react-virtual` 滚动体验。
+  - [frontend/package.json](frontend/package.json)：新增 devDep `vitest` / `@testing-library/react` / `@testing-library/jest-dom` / `jsdom`；新增 scripts `test` / `test:watch`。
+  - [frontend/vitest.config.ts](frontend/vitest.config.ts) + [frontend/tsconfig.vitest.json](frontend/tsconfig.vitest.json) + [frontend/tests/setup.ts](frontend/tests/setup.ts)：jsdom 环境、`@` alias 沿用、`scrollIntoView` / `ResizeObserver` 在 jsdom 下的 polyfill、`cleanup()` 每用例后挂载卸载。
+  - [frontend/tests/hooks/useChatStream.test.ts](frontend/tests/hooks/useChatStream.test.ts)：4 个用例——文本流拼接 + `done`、纯 `done` 走 `onFinally` 复位 `isStreaming`、`error` chunk 不漏恢复、abort 不产生未捕获异常。
+  - [frontend/tests/hooks/useConversation.test.ts](frontend/tests/hooks/useConversation.test.ts)：2 个用例——装载 conversations + models；HTTP 失败 graceful 不抛。
+  - [frontend/tests/perf/MessageList.bench.tsx](frontend/tests/perf/MessageList.bench.tsx)：构造 1000 条 mock 消息，断言虚拟化包装层挂载且耗时 < 2000ms；为绕过 jsdom 零高度问题临时把 `HTMLElement.prototype.clientHeight` 提升到 800。
+  - [scripts/seed-1000msgs.py](scripts/seed-1000msgs.py)：直接 `sqlite3` 往 `backend/workbench.db` 灌一个会话 + 1000 条交替消息，用于 dev 实测 `react-virtual` 滚动体验。
 - Skills 挂载（方案 A：内存注册表，不落库、无前端 UI）
-    - [backend/app/skills/__init__.py](backend/app/skills/__init__.py)：包入口，import 触发注册。
-    - [backend/app/skills/base.py](backend/app/skills/base.py)：`SkillResult` TypedDict + `Skill` Protocol（`name` / `description` / `async run(input, args)`）。
-    - [backend/app/skills/registry.py](backend/app/skills/registry.py)：启动时扫描子模块 `SKILL`，按 `name` 入字典；`list_skills()` 返回 manifest，`get_skill(name)` 查表；重复注册抛错。
-    - [backend/app/skills/echo.py](backend/app/skills/echo.py) + [backend/app/skills/current_time.py](backend/app/skills/current_time.py)：两个示例 skill（echo 支持 `args.upper`，current_time 返回 UTC/本地 ISO 串）。
-    - [backend/app/routers/skills.py](backend/app/routers/skills.py)：重写为 `GET /api/skills` 返回 manifest + `POST /api/skills/{name}` 接 `{input, args}`（body 可省），统一信封 `{status, skill, output, metadata, message}`；未知 skill / 运行异常均走 error 信封而非 HTTP 5xx。
-    - [backend/tests/test_skills.py](backend/tests/test_skills.py)：6 个用例覆盖 manifest 包含 echo+current_time、echo 原样返回 / upper 标志、空 body、current_time 输出 ISO、未知 skill 返回 error 信封。
+  - [backend/app/skills/__init__.py](backend/app/skills/__init__.py)：包入口，import 触发注册。
+  - [backend/app/skills/base.py](backend/app/skills/base.py)：`SkillResult` TypedDict + `Skill` Protocol（`name` / `description` / `async run(input, args)`）。
+  - [backend/app/skills/registry.py](backend/app/skills/registry.py)：启动时扫描子模块 `SKILL`，按 `name` 入字典；`list_skills()` 返回 manifest，`get_skill(name)` 查表；重复注册抛错。
+  - [backend/app/skills/echo.py](backend/app/skills/echo.py) + [backend/app/skills/current_time.py](backend/app/skills/current_time.py)：两个示例 skill（echo 支持 `args.upper`，current_time 返回 UTC/本地 ISO 串）。
+  - [backend/app/routers/skills.py](backend/app/routers/skills.py)：重写为 `GET /api/skills` 返回 manifest + `POST /api/skills/{name}` 接 `{input, args}`（body 可省），统一信封 `{status, skill, output, metadata, message}`；未知 skill / 运行异常均走 error 信封而非 HTTP 5xx。
+  - [backend/tests/test_skills.py](backend/tests/test_skills.py)：6 个用例覆盖 manifest 包含 echo+current_time、echo 原样返回 / upper 标志、空 body、current_time 输出 ISO、未知 skill 返回 error 信封。
 
 ### 验证
 
@@ -358,39 +360,39 @@
 ### 改动文件
 
 - 共享 helper 抽离
-    - [backend/app/services/_chat_helpers.py](backend/app/services/_chat_helpers.py)：抽出 `_attach_files_to_messages` 为纯函数 `attach_files_to_messages`，供 `/api/chat` 与 `/api/agent-chat` 共用。
-    - [backend/app/routers/chat.py](backend/app/routers/chat.py)：改 import 复用，删掉本地实现。
+  - [backend/app/services/_chat_helpers.py](backend/app/services/_chat_helpers.py)：抽出 `_attach_files_to_messages` 为纯函数 `attach_files_to_messages`，供 `/api/chat` 与 `/api/agent-chat` 共用。
+  - [backend/app/routers/chat.py](backend/app/routers/chat.py)：改 import 复用，删掉本地实现。
 - Schema / Config
-    - [backend/app/schemas.py](backend/app/schemas.py)：
-        - `ChatChunk.type` 从 `["text","thinking","done","error"]` 扩为加入 `"warning"`，用于 `max-steps-exceeded` 信号。
-        - 新增 `AgentChatRequest(ChatRequest)`：前置继承，新增 `max_steps: int = 8`、`step_temperature: float | None`、`final_temperature: float | None`。
-    - [backend/app/config.py](backend/app/config.py)：`Settings` 新增 `agent_max_steps=8`、`agent_step_temperature=0.7`、`agent_final_temperature=0.4`；注释明确温度为 placeholder（adapters 当前不接 temperature 参数），第二期再接通。
-    - [backend/.env.example](backend/.env.example)：补 `AGENT_MAX_STEPS` / `AGENT_STEP_TEMPERATURE` / `AGENT_FINAL_TEMPERATURE` 三行示例。
+  - [backend/app/schemas.py](backend/app/schemas.py)：
+    - `ChatChunk.type` 从 `["text","thinking","done","error"]` 扩为加入 `"warning"`，用于 `max-steps-exceeded` 信号。
+    - 新增 `AgentChatRequest(ChatRequest)`：前置继承，新增 `max_steps: int = 8`、`step_temperature: float | None`、`final_temperature: float | None`。
+  - [backend/app/config.py](backend/app/config.py)：`Settings` 新增 `agent_max_steps=8`、`agent_step_temperature=0.7`、`agent_final_temperature=0.4`；注释明确温度为 placeholder（adapters 当前不接 temperature 参数），第二期再接通。
+  - [backend/.env.example](backend/.env.example)：补 `AGENT_MAX_STEPS` / `AGENT_STEP_TEMPERATURE` / `AGENT_FINAL_TEMPERATURE` 三行示例。
 - ReAct 编排核心
-    - [backend/app/services/prompts/react_system.txt](backend/app/services/prompts/react_system.txt)：中文 ReAct 提示模板，明确规定当前无工具、Action 必须为 `none`、最多 8 步、必须在末尾给出 `Final Answer:`。
-    - [backend/app/services/agent_service.py](backend/app/services/agent_service.py)：
-        - `AgentService` 类，与 `ConversationService` 平级；构造接 AsyncSession，内部组合 conversation_service 落库。
-        - `stream_agent_chat(request, adapter, conversation) -> AsyncIterator[str]`：SSE 协议与 `/api/chat` 一致（`text` / `thinking` / `warning` / `done` / `error`）。
-        - 每步：透传 chunk → 累加 step_thinking/step_content → 步末持久化 thinking（带 `--- 第 N 步思考 ---` 边界注释）→ 扫描 `Final Answer:` 决定终止 / append assistant turn + 回填 `Observation: 无可用工具…` 继续循环。
-        - `max_steps` 触发：发 `warning max-steps-exceeded` + 把最后一步当作 final 落库 + `done finish_reason="agent"`。
-        - 错误路径：SSE `error` + 落 status=error、content=`[Agent 出错: {ex}]`、thinking 携带已累积 partial。
-        - abort 路径：捕 `asyncio.CancelledError`，partial 持久化 status=error（**不**在 DB 加 metadata 字段，遵守"不动表结构"约束），吞掉异常让 ASGI 不打 traceback。
-        - 启动时读 `react_system.txt` 一次缓存到模块级 `REACT_SYSTEM_PROMPT`；文件缺失走内联回退。
+  - [backend/app/services/prompts/react_system.txt](backend/app/services/prompts/react_system.txt)：中文 ReAct 提示模板，明确规定当前无工具、Action 必须为 `none`、最多 8 步、必须在末尾给出 `Final Answer:`。
+  - [backend/app/services/agent_service.py](backend/app/services/agent_service.py)：
+    - `AgentService` 类，与 `ConversationService` 平级；构造接 AsyncSession，内部组合 conversation_service 落库。
+    - `stream_agent_chat(request, adapter, conversation) -> AsyncIterator[str]`：SSE 协议与 `/api/chat` 一致（`text` / `thinking` / `warning` / `done` / `error`）。
+    - 每步：透传 chunk → 累加 step_thinking/step_content → 步末持久化 thinking（带 `--- 第 N 步思考 ---` 边界注释）→ 扫描 `Final Answer:` 决定终止 / append assistant turn + 回填 `Observation: 无可用工具…` 继续循环。
+    - `max_steps` 触发：发 `warning max-steps-exceeded` + 把最后一步当作 final 落库 + `done finish_reason="agent"`。
+    - 错误路径：SSE `error` + 落 status=error、content=`[Agent 出错: {ex}]`、thinking 携带已累积 partial。
+    - abort 路径：捕 `asyncio.CancelledError`，partial 持久化 status=error（**不**在 DB 加 metadata 字段，遵守"不动表结构"约束），吞掉异常让 ASGI 不打 traceback。
+    - 启动时读 `react_system.txt` 一次缓存到模块级 `REACT_SYSTEM_PROMPT`；文件缺失走内联回退。
 - 路由
-    - [backend/app/routers/agent.py](backend/app/routers/agent.py)：`POST /api/agent-chat`，镜像 `/api/chat` 的会话校验/用户消息持久化/StreamingResponse 头；不再检查 `stream=False`（继承时已校验）。
-    - [backend/main.py](backend/main.py)：注册 `agent.router`，prefix `/api`，与其它 router 并列。
+  - [backend/app/routers/agent.py](backend/app/routers/agent.py)：`POST /api/agent-chat`，镜像 `/api/chat` 的会话校验/用户消息持久化/StreamingResponse 头；不再检查 `stream=False`（继承时已校验）。
+  - [backend/main.py](backend/main.py)：注册 `agent.router`，prefix `/api`，与其它 router 并列。
 - 测试
-    - [backend/tests/test_agent_service.py](backend/tests/test_agent_service.py)：7 个用例。
-        - `_extract_final_answer` 三分支（命中、命中带换行、未命中、纯 sentinel）。
-        - 单步 `Final Answer:` 早退（`stream_chat` 仅 1 次 / `done` 出现）。
-        - 多步累积：`step1/2 thoughts` 都进 thinking 事件、DB 单条 assistant status=done、content=`ok`、thinking 含两条 `第 N 步思考` 注释。
-        - `max_steps=2` 不给 Final Answer → warning 事件触发且 `max_steps=2` → done。
-        - adapter 抛 `RuntimeError` → SSE error 事件 + DB status=error + thinking 含 `partial thoughts before boom`。
-        - adapter raise `asyncio.CancelledError` → 不抛、无 error/done 事件、DB status=error + thinking 含 partial。
-        - `/api/agent-chat` 路由注册校验（422 而非 404）。
-    - `_ScriptedAdapter` 按 turn 而非按 chunk 推进指针，避免多步自增错位。
+  - [backend/tests/test_agent_service.py](backend/tests/test_agent_service.py)：7 个用例。
+    - `_extract_final_answer` 三分支（命中、命中带换行、未命中、纯 sentinel）。
+    - 单步 `Final Answer:` 早退（`stream_chat` 仅 1 次 / `done` 出现）。
+    - 多步累积：`step1/2 thoughts` 都进 thinking 事件、DB 单条 assistant status=done、content=`ok`、thinking 含两条 `第 N 步思考` 注释。
+    - `max_steps=2` 不给 Final Answer → warning 事件触发且 `max_steps=2` → done。
+    - adapter 抛 `RuntimeError` → SSE error 事件 + DB status=error + thinking 含 `partial thoughts before boom`。
+    - adapter raise `asyncio.CancelledError` → 不抛、无 error/done 事件、DB status=error + thinking 含 partial。
+    - `/api/agent-chat` 路由注册校验（422 而非 404）。
+  - `_ScriptedAdapter` 按 turn 而非按 chunk 推进指针，避免多步自增错位。
 - 联调脚本
-    - [scripts/test-agent-chat.py](scripts/test-agent-chat.py)：用 `urllib.request` 流式读 SSE，按事件类型分别 stdout（text 正常 / thinking 暗色 ANSI / done 结尾 / error / warning 走 stderr），支持 `--model` `--prompt` `--max-steps` `--thinking`。
+  - [scripts/test-agent-chat.py](scripts/test-agent-chat.py)：用 `urllib.request` 流式读 SSE，按事件类型分别 stdout（text 正常 / thinking 暗色 ANSI / done 结尾 / error / warning 走 stderr），支持 `--model` `--prompt` `--max-steps` `--thinking`。
 
 ### 验证
 
@@ -420,50 +422,50 @@
 ### 改动文件
 
 - 依赖
-    - [backend/pyproject.toml](backend/pyproject.toml)：新增 `langchain-core>=0.3,<0.4` 与 `langgraph>=0.2,<0.3`。**不引** `langchain-openai`/`langchain-anthropic`：用自家的 `AdapterChatModel` 桥到现有 BaseAdapter，绕开"装第二个 LLM 客户端栈、重复配 key"的退化。
+  - [backend/pyproject.toml](backend/pyproject.toml)：新增 `langchain-core>=0.3,<0.4` 与 `langgraph>=0.2,<0.3`。**不引** `langchain-openai`/`langchain-anthropic`：用自家的 `AdapterChatModel` 桥到现有 BaseAdapter，绕开"装第二个 LLM 客户端栈、重复配 key"的退化。
 - Adapter 层扩 temperature（让 Agent 步级温度真正发到模型）
-    - [backend/app/adapters/base.py](backend/app/adapters/base.py)：`stream_chat` 签名加 `temperature: float | None = None`、`top_p: float | None = None` 命名关键字。
-    - [backend/app/adapters/openai_adapter.py](backend/app/adapters/openai_adapter.py)：仅在 `temperature/top_p != None` 时注入 params，保留推理模型（o1/o3/deepseek-reasoner）不接温度的默认行为。
-    - [backend/app/adapters/anthropic_adapter.py](backend/app/adapters/anthropic_adapter.py)：同上策略，注入 `payload["temperature"]`、`payload["top_p"]`。
-    - [backend/app/adapters/gemini_adapter.py](backend/app/adapters/gemini_adapter.py)：注入到 `generationConfig.temperature`/`topP`。
+  - [backend/app/adapters/base.py](backend/app/adapters/base.py)：`stream_chat` 签名加 `temperature: float | None = None`、`top_p: float | None = None` 命名关键字。
+  - [backend/app/adapters/openai_adapter.py](backend/app/adapters/openai_adapter.py)：仅在 `temperature/top_p != None` 时注入 params，保留推理模型（o1/o3/deepseek-reasoner）不接温度的默认行为。
+  - [backend/app/adapters/anthropic_adapter.py](backend/app/adapters/anthropic_adapter.py)：同上策略，注入 `payload["temperature"]`、`payload["top_p"]`。
+  - [backend/app/adapters/gemini_adapter.py](backend/app/adapters/gemini_adapter.py)：注入到 `generationConfig.temperature`/`topP`。
 - DB schema 扩一项
-    - [backend/app/models.py](backend/app/models.py)：`Message` 新增 `metadata_` 字段，类型 `JSON`（SQLite 存 TEXT），默认空 dict。属性名带下划线避开 SQLAlchemy 保留字 `metadata`。
-    - [backend/main.py](backend/main.py) + [backend/tests/conftest.py](backend/tests/conftest.py)：lifespan 与测试 fixture 各加 `ALTER TABLE messages ADD COLUMN metadata TEXT DEFAULT '{}'` 兼容迁移。
+  - [backend/app/models.py](backend/app/models.py)：`Message` 新增 `metadata_` 字段，类型 `JSON`（SQLite 存 TEXT），默认空 dict。属性名带下划线避开 SQLAlchemy 保留字 `metadata`。
+  - [backend/main.py](backend/main.py) + [backend/tests/conftest.py](backend/tests/conftest.py)：lifespan 与测试 fixture 各加 `ALTER TABLE messages ADD COLUMN metadata TEXT DEFAULT '{}'` 兼容迁移。
 - Schema
-    - [backend/app/schemas.py](backend/app/schemas.py)：
-        - `ChatChunk.type` 扩 `Literal[..., "warning", "action", "observation"]`；新增 `name`/`step`/`input`/`maxSteps` 字段。
-        - `AgentChatRequest` 新增 `enable_skills: list[str] | None`（None=全部注册 skill；显式列表是白名单）。
-        - `MessageOut` 增加 `metadata: dict = {}` 字段，并用 `@model_validator(mode="before")` 把 ORM 的 `metadata_` 别名映射成 API 字段 `metadata`，避免前端拿到 SQLAlchemy 的保留字属性。
+  - [backend/app/schemas.py](backend/app/schemas.py)：
+    - `ChatChunk.type` 扩 `Literal[..., "warning", "action", "observation"]`；新增 `name`/`step`/`input`/`maxSteps` 字段。
+    - `AgentChatRequest` 新增 `enable_skills: list[str] | None`（None=全部注册 skill；显式列表是白名单）。
+    - `MessageOut` 增加 `metadata: dict = {}` 字段，并用 `@model_validator(mode="before")` 把 ORM 的 `metadata_` 别名映射成 API 字段 `metadata`，避免前端拿到 SQLAlchemy 的保留字属性。
 - Skills 暴露给 Agent
-    - [backend/app/skills/registry.py](backend/app/skills/registry.py) + [backend/app/skills/__init__.py](backend/app/skills/__init__.py)：新增 `iter_skills()` 返回所有 `Skill` 实例。
+  - [backend/app/skills/registry.py](backend/app/skills/registry.py) + [backend/app/skills/__init__.py](backend/app/skills/__init__.py)：新增 `iter_skills()` 返回所有 `Skill` 实例。
 - LangChain 适配层
-    - [backend/app/services/langchain_adapter.py](backend/app/services/langchain_adapter.py)（新增）：`AdapterChatModel(BaseChatModel)`。实现 `_agenerate` + `_astream`（async 路径，LangGraph 走的就是这条）；同步 `_generate`/`_stream` 走 `concurrent.futures.ThreadPoolExecutor` 包装，仅供 sync 回退场景。`bind_tools` **显式 NotImplemented**：第二期 2a 仍走 ReAct prompt 注入，不依赖厂商原生 tool_calls API。`thinking` 字段塞到 `AIMessage.additional_kwargs["thinking"]`（langchain-core 0.3 把 `additional_metadata` 移除了，沿用坑见第十三节）。
+  - [backend/app/services/langchain_adapter.py](backend/app/services/langchain_adapter.py)（新增）：`AdapterChatModel(BaseChatModel)`。实现 `_agenerate` + `_astream`（async 路径，LangGraph 走的就是这条）；同步 `_generate`/`_stream` 走 `concurrent.futures.ThreadPoolExecutor` 包装，仅供 sync 回退场景。`bind_tools` **显式 NotImplemented**：第二期 2a 仍走 ReAct prompt 注入，不依赖厂商原生 tool_calls API。`thinking` 字段塞到 `AIMessage.additional_kwargs["thinking"]`（langchain-core 0.3 把 `additional_metadata` 移除了，沿用坑见第十三节）。
 - 重写 AgentService
-    - [backend/app/services/agent_service.py](backend/app/services/agent_service.py)：
-        - 仍保留 TextReAct 解析（`Action:` / `Action Input:` / `Final Answer:`），不依赖 native tool_calls。
-        - 每步发起用 `chat_model._astream(messages)` 替代直接 await `adapter.stream_chat`；LangChain `AIMessageChunk` 流式累积。
-        - Skills 通过 `_wrap_skill_as_tool` 包成 `StructuredTool`，agent 循环里 `await tool.ainvoke({"input": action_input})` 执行——错误走 error envelope 而非抛异常，loop 不中断。
-        - SSE 协议扩三类：`{"type":"action","name","input","step"}`、`{"type":"observation","name","content","step"}`、`{"type":"warning","message":"max-steps-exceeded","max_steps"}`。
-        - 步计数策略改为每步开始递增 `step_count`，warning 触发条件改为 `step_count >= max_steps`；后路径（cancel/error）依赖 `step_count` 的语义自洽。
-        - `Message.metadata_` JSON 列落 `{step_count, aborted, tool_calls: [{name, step, input, output}]}`；正常运行也是 `{step_count: N, aborted: false, tool_calls: [...]}`。
+  - [backend/app/services/agent_service.py](backend/app/services/agent_service.py)：
+    - 仍保留 TextReAct 解析（`Action:` / `Action Input:` / `Final Answer:`），不依赖 native tool_calls。
+    - 每步发起用 `chat_model._astream(messages)` 替代直接 await `adapter.stream_chat`；LangChain `AIMessageChunk` 流式累积。
+    - Skills 通过 `_wrap_skill_as_tool` 包成 `StructuredTool`，agent 循环里 `await tool.ainvoke({"input": action_input})` 执行——错误走 error envelope 而非抛异常，loop 不中断。
+    - SSE 协议扩三类：`{"type":"action","name","input","step"}`、`{"type":"observation","name","content","step"}`、`{"type":"warning","message":"max-steps-exceeded","max_steps"}`。
+    - 步计数策略改为每步开始递增 `step_count`，warning 触发条件改为 `step_count >= max_steps`；后路径（cancel/error）依赖 `step_count` 的语义自洽。
+    - `Message.metadata_` JSON 列落 `{step_count, aborted, tool_calls: [{name, step, input, output}]}`；正常运行也是 `{step_count: N, aborted: false, tool_calls: [...]}`。
 - ReAct 模板更新
-    - [backend/app/services/prompts/react_system.txt](backend/app/services/prompts/react_system.txt)：新增 `{tools_section}` 占位符；运行时由 AgentService 用注册 skill 动态注入；保留 `Action: none` 与 `Final Answer:` 终止符语义。
+  - [backend/app/services/prompts/react_system.txt](backend/app/services/prompts/react_system.txt)：新增 `{tools_section}` 占位符；运行时由 AgentService 用注册 skill 动态注入；保留 `Action: none` 与 `Final Answer:` 终止符语义。
 - Router
-    - [backend/app/routers/agent.py](backend/app/routers/agent.py)：构造时 `iter_skills()` 传入 AgentService，由 `enable_skills` 实际过滤。
+  - [backend/app/routers/agent.py](backend/app/routers/agent.py)：构造时 `iter_skills()` 传入 AgentService，由 `enable_skills` 实际过滤。
 - 测试
-    - [backend/tests/test_agent_service_v2.py](backend/tests/test_agent_service_v2.py)（新增，9 个用例）：
-        - 单步 Final Answer、两步带 `echo` 工具调用、未知工具→observation+续推、`max_steps=2` 触发 warning、adapter 抛错→SSE error + DB metadata.error、abort→metadata.aborted=true + status=error 且无 done/error 事件、单元函数 `_parse_action` / `_extract_final_answer` / `_wrap_skill_as_tool` 校验、`/api/agent-chat` 路由仍注册。
-        - 用 `_ScriptedChatModel(BaseChatModel)` 替代第一期的 `_ScriptedAdapter`，更贴近真实 LangGraph 路径。
-    - [backend/tests/test_agent_service.py](backend/tests/test_agent_service.py)：保留作为第一期 ReAct 解析回归保护；`test_extract_final_answer` 改为 import module-level `_extract_final_answer` 函数。
+  - [backend/tests/test_agent_service_v2.py](backend/tests/test_agent_service_v2.py)（新增，9 个用例）：
+    - 单步 Final Answer、两步带 `echo` 工具调用、未知工具→observation+续推、`max_steps=2` 触发 warning、adapter 抛错→SSE error + DB metadata.error、abort→metadata.aborted=true + status=error 且无 done/error 事件、单元函数 `_parse_action` / `_extract_final_answer` / `_wrap_skill_as_tool` 校验、`/api/agent-chat` 路由仍注册。
+    - 用 `_ScriptedChatModel(BaseChatModel)` 替代第一期的 `_ScriptedAdapter`，更贴近真实 LangGraph 路径。
+  - [backend/tests/test_agent_service.py](backend/tests/test_agent_service.py)：保留作为第一期 ReAct 解析回归保护；`test_extract_final_answer` 改为 import module-level `_extract_final_answer` 函数。
 - 前端
-    - [frontend/src/types/index.ts](frontend/src/types/index.ts)：`Message` 加 `metadata?: Record<string, unknown>`；`ChatChunk.type` 扩 `warning`/`action`/`observation` 与新字段；新增 `AgentChatRequest` 接口。
-    - [frontend/src/api/agent-chat.ts](frontend/src/api/agent-chat.ts)（新增）：`sendAgentChatStream` 与 `chat.ts` 同形态，新增 `onAction` / `onObservation` / `onWarning` 回调。
-    - [frontend/src/api/chat.ts](frontend/src/api/chat.ts)：补 `warning` 事件分发到 `onWarning`，保持与 agent 路径行为一致。
-    - [frontend/src/hooks/useChatStream.ts](frontend/src/hooks/useChatStream.ts)：`sendMessage` 内根据 `useWorkspaceStore.getState().agentMode` 分流到 `/api/agent-chat`；ReAct viewport（Action/Observation 行）写入 `assistant.thinking` 字段，复用现有 `ThinkingBlock` 组件无需新组件。
-    - [frontend/src/components/InputArea.tsx](frontend/src/components/InputArea.tsx)：新增 `agentMode` prop 与「Agent」toggle 按钮（闪电图标 `Zap`，琥珀色 active 态），与「深度思考」并列；开启时下方显示一行提示文案。
-    - [frontend/src/components/WorkspaceLayout.tsx](frontend/src/components/WorkspaceLayout.tsx)：把 `agentMode` 与 `onAgentModeToggle` 接到 InputArea。
-    - [frontend/src/store/workspaceStore.ts](frontend/src/store/workspaceStore.ts)：新增 `agentMode` + `setAgentMode`；persist version 升到 4，partialize 把 agentMode 加入持久化字段。
-    - [frontend/tests/hooks/useChatStream.test.ts](frontend/tests/hooks/useChatStream.test.ts)：新增 2 个用例覆盖 agent 路径——fetch URL 切换到 `/api/agent-chat`、SSE action/observation 走 thinking 字段、error 事件正确写入 `**Agent Error**`。
+  - [frontend/src/types/index.ts](frontend/src/types/index.ts)：`Message` 加 `metadata?: Record<string, unknown>`；`ChatChunk.type` 扩 `warning`/`action`/`observation` 与新字段；新增 `AgentChatRequest` 接口。
+  - [frontend/src/api/agent-chat.ts](frontend/src/api/agent-chat.ts)（新增）：`sendAgentChatStream` 与 `chat.ts` 同形态，新增 `onAction` / `onObservation` / `onWarning` 回调。
+  - [frontend/src/api/chat.ts](frontend/src/api/chat.ts)：补 `warning` 事件分发到 `onWarning`，保持与 agent 路径行为一致。
+  - [frontend/src/hooks/useChatStream.ts](frontend/src/hooks/useChatStream.ts)：`sendMessage` 内根据 `useWorkspaceStore.getState().agentMode` 分流到 `/api/agent-chat`；ReAct viewport（Action/Observation 行）写入 `assistant.thinking` 字段，复用现有 `ThinkingBlock` 组件无需新组件。
+  - [frontend/src/components/InputArea.tsx](frontend/src/components/InputArea.tsx)：新增 `agentMode` prop 与「Agent」toggle 按钮（闪电图标 `Zap`，琥珀色 active 态），与「深度思考」并列；开启时下方显示一行提示文案。
+  - [frontend/src/components/WorkspaceLayout.tsx](frontend/src/components/WorkspaceLayout.tsx)：把 `agentMode` 与 `onAgentModeToggle` 接到 InputArea。
+  - [frontend/src/store/workspaceStore.ts](frontend/src/store/workspaceStore.ts)：新增 `agentMode` + `setAgentMode`；persist version 升到 4，partialize 把 agentMode 加入持久化字段。
+  - [frontend/tests/hooks/useChatStream.test.ts](frontend/tests/hooks/useChatStream.test.ts)：新增 2 个用例覆盖 agent 路径——fetch URL 切换到 `/api/agent-chat`、SSE action/observation 走 thinking 字段、error 事件正确写入 `**Agent Error**`。
 
 ### 验证
 
@@ -498,37 +500,37 @@
 ### 改动文件
 
 - 依赖
-    - [backend/pyproject.toml](backend/pyproject.toml)：加 `chromadb>=0.5`、`langchain-chroma>=0.1`、`langchain-text-splitters>=0.3`（关键缺失）、`sentence-transformers>=2.7`；`[tool.pytest.ini_options]` 加 `markers = ["slow: ..."]`。
+  - [backend/pyproject.toml](backend/pyproject.toml)：加 `chromadb>=0.5`、`langchain-chroma>=0.1`、`langchain-text-splitters>=0.3`（关键缺失）、`sentence-transformers>=2.7`；`[tool.pytest.ini_options]` 加 `markers = ["slow: ..."]`。
 - Config / 模型
-    - [backend/app/config.py](backend/app/config.py) + [.env.example](backend/.env.example)：加 `embedding_model`、`chroma_persist_dir`（默认 `.chroma`，相对 backend root 解析）、`kb_chunk_size=800`、`kb_chunk_overlap=100`、`kb_top_k=4`、`kb_min_score=0.3`。
-    - [backend/app/models.py](backend/app/models.py)：新增 `KnowledgeBase`（id/name/description/created_at/updated_at）与 `KnowledgeDoc`（id/kb_id FK CASCADE+index/filename/sha256/text/created_at），relationship `cascade="all, delete-orphan"`。无 `(kb_id,sha256)` 唯一约束——dedup 走显式 SELECT 返回 `deduplicated=True`。
-    - [backend/app/schemas.py](backend/app/schemas.py)：新增 `KnowledgeBaseCreate`/`KnowledgeBaseUpdate`/`KnowledgeBaseOut`/`KnowledgeDocOut`（不含 text）/`DocumentUploadResponse`/`RetrievedChunk`，照 `ModelConfig*` 风格。`ChatChunk` 本期不改。
+  - [backend/app/config.py](backend/app/config.py) + [.env.example](backend/.env.example)：加 `embedding_model`、`chroma_persist_dir`（默认 `.chroma`，相对 backend root 解析）、`kb_chunk_size=800`、`kb_chunk_overlap=100`、`kb_top_k=4`、`kb_min_score=0.3`。
+  - [backend/app/models.py](backend/app/models.py)：新增 `KnowledgeBase`（id/name/description/created_at/updated_at）与 `KnowledgeDoc`（id/kb_id FK CASCADE+index/filename/sha256/text/created_at），relationship `cascade="all, delete-orphan"`。无 `(kb_id,sha256)` 唯一约束——dedup 走显式 SELECT 返回 `deduplicated=True`。
+  - [backend/app/schemas.py](backend/app/schemas.py)：新增 `KnowledgeBaseCreate`/`KnowledgeBaseUpdate`/`KnowledgeBaseOut`/`KnowledgeDocOut`（不含 text）/`DocumentUploadResponse`/`RetrievedChunk`，照 `ModelConfig*` 风格。`ChatChunk` 本期不改。
 - 新后端服务
-    - [backend/app/services/embedding_service.py](backend/app/services/embedding_service.py)：`EmbeddingService` 模块单例，懒加载 `SentenceTransformer('BAAI/bge-small-zh-v1.5')`（import 放进 `_load_model()` 避免测试链路引 torch）；不可用时回退 `FakeEmbedder`（no-op，返 `[]`）。`is_available()`/`embed_texts()`/`embed_query()`。
-    - [backend/app/services/knowledge_service.py](backend/app/services/knowledge_service.py)：`KnowledgeService(db)` KB/doc CRUD + chunking + embed + retrieve。模块内懒 chromadb `PersistentClient` 单例（`_get_chroma_client()`，persist dir 对 `_BACKEND_ROOT` 解析）；collection-per-kb（`f"kb_{kb_id}"`，cosine space，删 KB = O(1) `delete_collection`）；`_chunk_text` 用 `MarkdownHeaderTextSplitter`→`RecursiveCharacterTextSplitter`；`retrieve` 返回 `RetrievedChunk`，score=1-distance。不可用时 `retrieve` 返 `[]`、`upload_document` 抛错。
-    - [backend/app/skills/retrieve_notes.py](backend/app/skills/retrieve_notes.py)：**工厂** `get_retrieve_notes_skill(kb_id, knowledge_service)` 返回 `_RetrieveNotesSkill`，**不进 `registry._REGISTRY`**。`run` 返回带 `[来源: doc.md #heading | score=..]` 标签的 markdown，**不加 `Observation:` 前缀**（agent_service 会加），`metadata.chunks` 透传结构化片段。流经 `_wrap_skill_as_tool` 无需改 agent_service（duck-typed）。
-    - [backend/app/routers/knowledge.py](backend/app/routers/knowledge.py)：`GET/POST/DELETE /api/knowledge-bases`、`GET/POST/DELETE /api/knowledge-bases/{id}/documents`。multipart 用 `UploadFile = File(...)`，仅 `.md/.markdown/.txt`、10MB 上限；embedding 不可用→503；未知 KB→404。
+  - [backend/app/services/embedding_service.py](backend/app/services/embedding_service.py)：`EmbeddingService` 模块单例，懒加载 `SentenceTransformer('BAAI/bge-small-zh-v1.5')`（import 放进 `_load_model()` 避免测试链路引 torch）；不可用时回退 `FakeEmbedder`（no-op，返 `[]`）。`is_available()`/`embed_texts()`/`embed_query()`。
+  - [backend/app/services/knowledge_service.py](backend/app/services/knowledge_service.py)：`KnowledgeService(db)` KB/doc CRUD + chunking + embed + retrieve。模块内懒 chromadb `PersistentClient` 单例（`_get_chroma_client()`，persist dir 对 `_BACKEND_ROOT` 解析）；collection-per-kb（`f"kb_{kb_id}"`，cosine space，删 KB = O(1) `delete_collection`）；`_chunk_text` 用 `MarkdownHeaderTextSplitter`→`RecursiveCharacterTextSplitter`；`retrieve` 返回 `RetrievedChunk`，score=1-distance。不可用时 `retrieve` 返 `[]`、`upload_document` 抛错。
+  - [backend/app/skills/retrieve_notes.py](backend/app/skills/retrieve_notes.py)：**工厂** `get_retrieve_notes_skill(kb_id, knowledge_service)` 返回 `_RetrieveNotesSkill`，**不进 `registry._REGISTRY`**。`run` 返回带 `[来源: doc.md #heading | score=..]` 标签的 markdown，**不加 `Observation:` 前缀**（agent_service 会加），`metadata.chunks` 透传结构化片段。流经 `_wrap_skill_as_tool` 无需改 agent_service（duck-typed）。
+  - [backend/app/routers/knowledge.py](backend/app/routers/knowledge.py)：`GET/POST/DELETE /api/knowledge-bases`、`GET/POST/DELETE /api/knowledge-bases/{id}/documents`。multipart 用 `UploadFile = File(...)`，仅 `.md/.markdown/.txt`、10MB 上限；embedding 不可用→503；未知 KB→404。
 - 接线
-    - [backend/app/routers/agent.py](backend/app/routers/agent.py)：`skills = list(iter_skills())` 后，若 `request.rag_knowledge_base_id` 非空，构造 `KnowledgeService(db)` + `get_retrieve_notes_skill` append；若 `enable_skills` 是 list 则追加 `"retrieve_notes"`（always-on 防白名单过滤）。
-    - [backend/app/routers/chat.py](backend/app/routers/chat.py)：`attach_files_to_messages` 后，若 `rag_knowledge_base_id` 非空，`try: KnowledgeService.retrieve(...)` + `inject_retrieved_context`；`except: log warning + continue`（检索失败不阻断 chat）。
-    - [backend/app/services/_chat_helpers.py](backend/app/services/_chat_helpers.py)：新增 `inject_retrieved_context(messages, chunks)`，prepend `[知识库检索结果]\n{chunks}\n\n[以下为用户原始问题]` 到最后一条 user 消息，**不替换**原内容。
-    - [backend/main.py](backend/main.py)：注册 `knowledge.router`；model import 加 `KnowledgeBase, KnowledgeDoc` 让 `create_all` 看见。**不做** lifespan eager-init（懒加载）。
+  - [backend/app/routers/agent.py](backend/app/routers/agent.py)：`skills = list(iter_skills())` 后，若 `request.rag_knowledge_base_id` 非空，构造 `KnowledgeService(db)` + `get_retrieve_notes_skill` append；若 `enable_skills` 是 list 则追加 `"retrieve_notes"`（always-on 防白名单过滤）。
+  - [backend/app/routers/chat.py](backend/app/routers/chat.py)：`attach_files_to_messages` 后，若 `rag_knowledge_base_id` 非空，`try: KnowledgeService.retrieve(...)` + `inject_retrieved_context`；`except: log warning + continue`（检索失败不阻断 chat）。
+  - [backend/app/services/_chat_helpers.py](backend/app/services/_chat_helpers.py)：新增 `inject_retrieved_context(messages, chunks)`，prepend `[知识库检索结果]\n{chunks}\n\n[以下为用户原始问题]` 到最后一条 user 消息，**不替换**原内容。
+  - [backend/main.py](backend/main.py)：注册 `knowledge.router`；model import 加 `KnowledgeBase, KnowledgeDoc` 让 `create_all` 看见。**不做** lifespan eager-init（懒加载）。
 - 前端
-    - [frontend/src/types/index.ts](frontend/src/types/index.ts)：加 `KnowledgeBase`/`KnowledgeDoc`/`DocumentUploadResponse`/`RetrievedChunk`（`ragKnowledgeBaseId` 已存在不改）。
-    - [frontend/src/api/knowledge.ts](frontend/src/api/knowledge.ts)（新增）：CRUD 用 `apiFetch`（mirror `models.ts`）；`uploadDocument` 绕过 apiFetch 走原生 fetch 发 FormData（mirror `upload.ts`），响应 `snakeToCamel`。
-    - [frontend/src/store/workspaceStore.ts](frontend/src/store/workspaceStore.ts)：加 `knowledgeBases`/`selectedKbId`('' sentinel)/`setSelectedKbId`/`loadKnowledgeBases`/`addKnowledgeBase`/`removeKnowledgeBase`；persist version 4→5，`selectedKbId` **同时**加进 `partialize` 与 `merge`（坑：只加 partialize 会让 hydration 静默重置）。
-    - [frontend/src/components/KnowledgeBaseManager.tsx](frontend/src/components/KnowledgeBaseManager.tsx)（新增）：mirror `ModelManager.tsx` 结构，两级视图（KB 列表 → 选中 KB → 文档列表 + 上传/删除），删除确认用内联样式嵌套 overlay（Tailwind v4 @theme 使 bg-* 透明）。
-    - [frontend/src/components/ChatHeader.tsx](frontend/src/components/ChatHeader.tsx)：知识库按钮移除 disabled + 接 onClick 开 KnowledgeBaseManager；新增 KB `<select>` 下拉（空时 `--无--`）；**直接读 store**（不经 WorkspaceLayout props）。
-    - [frontend/src/hooks/useConversation.ts](frontend/src/hooks/useConversation.ts)：mount 时 `loadModels` 后追加 `loadKnowledgeBases`。
-    - [frontend/src/hooks/useChatStream.ts](frontend/src/hooks/useChatStream.ts)：agent 与 chat 两分支请求体加 `ragKnowledgeBaseId: useWorkspaceStore.getState().selectedKbId || undefined`（用 `getState()` 避免 stale，mirror agentMode 模式）。
+  - [frontend/src/types/index.ts](frontend/src/types/index.ts)：加 `KnowledgeBase`/`KnowledgeDoc`/`DocumentUploadResponse`/`RetrievedChunk`（`ragKnowledgeBaseId` 已存在不改）。
+  - [frontend/src/api/knowledge.ts](frontend/src/api/knowledge.ts)（新增）：CRUD 用 `apiFetch`（mirror `models.ts`）；`uploadDocument` 绕过 apiFetch 走原生 fetch 发 FormData（mirror `upload.ts`），响应 `snakeToCamel`。
+  - [frontend/src/store/workspaceStore.ts](frontend/src/store/workspaceStore.ts)：加 `knowledgeBases`/`selectedKbId`('' sentinel)/`setSelectedKbId`/`loadKnowledgeBases`/`addKnowledgeBase`/`removeKnowledgeBase`；persist version 4→5，`selectedKbId` **同时**加进 `partialize` 与 `merge`（坑：只加 partialize 会让 hydration 静默重置）。
+  - [frontend/src/components/KnowledgeBaseManager.tsx](frontend/src/components/KnowledgeBaseManager.tsx)（新增）：mirror `ModelManager.tsx` 结构，两级视图（KB 列表 → 选中 KB → 文档列表 + 上传/删除），删除确认用内联样式嵌套 overlay（Tailwind v4 @theme 使 bg-* 透明）。
+  - [frontend/src/components/ChatHeader.tsx](frontend/src/components/ChatHeader.tsx)：知识库按钮移除 disabled + 接 onClick 开 KnowledgeBaseManager；新增 KB `<select>` 下拉（空时 `--无--`）；**直接读 store**（不经 WorkspaceLayout props）。
+  - [frontend/src/hooks/useConversation.ts](frontend/src/hooks/useConversation.ts)：mount 时 `loadModels` 后追加 `loadKnowledgeBases`。
+  - [frontend/src/hooks/useChatStream.ts](frontend/src/hooks/useChatStream.ts)：agent 与 chat 两分支请求体加 `ragKnowledgeBaseId: useWorkspaceStore.getState().selectedKbId || undefined`（用 `getState()` 避免 stale，mirror agentMode 模式）。
 - 测试
-    - [backend/tests/test_knowledge_service.py](backend/tests/test_knowledge_service.py)（新增 15 用例）：fake embedder（hash 派生确定性非零向量）+ temp chroma 目录，覆盖 KB CRUD、上传→chunk→索引、dedup、坏类型/超大/未知 KB、删文档、retrieve 排序与 min_score 过滤、FakeEmbedder no-op 路径。
-    - [backend/tests/test_retrieve_notes_skill.py](backend/tests/test_retrieve_notes_skill.py)（新增 7 用例）：fake KB + fake retrieval 验证输出格式（来源标签、无 `Observation:` 前缀）、`metadata.chunks`、args 透传、空结果消息。
-    - [backend/tests/test_routers_knowledge.py](backend/tests/test_routers_knowledge.py)（新增 9 用例）：httpx ASGITransport 端到端，覆盖 list/create/delete KB、上传/dedup/坏类型/未知 KB、删文档。
-    - [backend/tests/test_chat_helpers.py](backend/tests/test_chat_helpers.py)（新增 5 用例）：`inject_retrieved_context` prepend/不替换/no-op/无 heading/与文件 attach 共存。
-    - [backend/tests/test_agent_service_v2.py](backend/tests/test_agent_service_v2.py)：新增 2 用例——retrieve_notes 流经 agent loop（action/observation 事件 + tool_calls 持久化 + 无重复前缀）、空结果 observation。
-    - [frontend/tests/components/KnowledgeBaseManager.test.tsx](frontend/tests/components/KnowledgeBaseManager.test.tsx)（新增，建 `tests/components/` 目录）：mock API 覆盖列表渲染/创建/上传/删除确认。
-    - [frontend/tests/hooks/useChatStream.test.ts](frontend/tests/hooks/useChatStream.test.ts)：新增 2 用例——chat 与 agent 两端点 fetch body 含 `rag_knowledge_base_id`。
+  - [backend/tests/test_knowledge_service.py](backend/tests/test_knowledge_service.py)（新增 15 用例）：fake embedder（hash 派生确定性非零向量）+ temp chroma 目录，覆盖 KB CRUD、上传→chunk→索引、dedup、坏类型/超大/未知 KB、删文档、retrieve 排序与 min_score 过滤、FakeEmbedder no-op 路径。
+  - [backend/tests/test_retrieve_notes_skill.py](backend/tests/test_retrieve_notes_skill.py)（新增 7 用例）：fake KB + fake retrieval 验证输出格式（来源标签、无 `Observation:` 前缀）、`metadata.chunks`、args 透传、空结果消息。
+  - [backend/tests/test_routers_knowledge.py](backend/tests/test_routers_knowledge.py)（新增 9 用例）：httpx ASGITransport 端到端，覆盖 list/create/delete KB、上传/dedup/坏类型/未知 KB、删文档。
+  - [backend/tests/test_chat_helpers.py](backend/tests/test_chat_helpers.py)（新增 5 用例）：`inject_retrieved_context` prepend/不替换/no-op/无 heading/与文件 attach 共存。
+  - [backend/tests/test_agent_service_v2.py](backend/tests/test_agent_service_v2.py)：新增 2 用例——retrieve_notes 流经 agent loop（action/observation 事件 + tool_calls 持久化 + 无重复前缀）、空结果 observation。
+  - [frontend/tests/components/KnowledgeBaseManager.test.tsx](frontend/tests/components/KnowledgeBaseManager.test.tsx)（新增，建 `tests/components/` 目录）：mock API 覆盖列表渲染/创建/上传/删除确认。
+  - [frontend/tests/hooks/useChatStream.test.ts](frontend/tests/hooks/useChatStream.test.ts)：新增 2 用例——chat 与 agent 两端点 fetch body 含 `rag_knowledge_base_id`。
 
 ### 验证
 
@@ -559,6 +561,7 @@
 **探索中确认的关键事实**：ReAct 循环有 5 条正常终止路径 + 2 条异常路径（外层 CancelledError 跳过 step_end，因 `step_number` 可能未绑定）；`_wrap_skill_as_tool._arun` 原先丢弃 `result["metadata"]`；retrieve_notes 成功返回的 metadata 无 chunks（局部变量 `chunks` 含 `KnowledgeRetrievalResult` 可用）；前后端 `ChatChunk` schema 已漂移（TS 有 `input`/`maxSteps`，Python 无）。
 
 **实现中踩到的坑**：
+
 - **`tool` 闭包引用 NameError**：原 `_wrap_skill_as_tool` 在 `return StructuredTool.from_function(...)` 内联构造 tool，`_arun` 闭包引用 `tool` 时该名从未绑定。改为先 `tool = StructuredTool.from_function(...)` 再 `return tool`，闭包按 cell 引用即可在调用时解析。
 - **zustand `set` 类型不匹配**：helper 函数若声明自定义 `StoreSet` 类型，与 zustand `set` 的重载签名（`replace` 可为 `true`）冲突。改为传入 `StoreApi<WorkspaceState>`（工厂第三参数 `api`），用 `api.setState`。
 - **Tailwind v4 @theme 透明坑**（同 2b-i）：AgentTrace 的徽标/卡片背景用内联 `rgba()` 样式，不用 `bg-*`。
@@ -567,21 +570,21 @@
 ### 改动文件
 
 - 后端协议/服务
-    - [backend/app/schemas.py](backend/app/schemas.py)：`ChatChunk.type` 加 `step_start`/`step_end`/`retrieved`；加 `input`/`max_steps`/`finish`/`label`/`docs` 字段（消除前后端漂移）。
-    - [backend/app/services/agent_service.py](backend/app/services/agent_service.py)：(1a) `_wrap_skill_as_tool._arun` stash `tool._last_metadata`；(1c) 循环里 `step_start`→`steps.append(current_step)`，`thinking`/`text`/`action`/`observation` 累积进 current_step，`matching.ainvoke` 后读 `getattr(matching,"_last_metadata")` 发 `retrieved` 事件；(1d) 8 路径发 `step_end`（外层 cancel 跳过），warning/error/done 加 `step` 字段；(1e) 三处 persist 写 `"agent":True`+`"steps"`。
-    - [backend/app/skills/retrieve_notes.py](backend/app/skills/retrieve_notes.py)：成功返回的 metadata 加 `chunks` 数组（`doc_id`/`filename`/`heading`/`score`/`text`）。
+  - [backend/app/schemas.py](backend/app/schemas.py)：`ChatChunk.type` 加 `step_start`/`step_end`/`retrieved`；加 `input`/`max_steps`/`finish`/`label`/`docs` 字段（消除前后端漂移）。
+  - [backend/app/services/agent_service.py](backend/app/services/agent_service.py)：(1a) `_wrap_skill_as_tool._arun` stash `tool._last_metadata`；(1c) 循环里 `step_start`→`steps.append(current_step)`，`thinking`/`text`/`action`/`observation` 累积进 current_step，`matching.ainvoke` 后读 `getattr(matching,"_last_metadata")` 发 `retrieved` 事件；(1d) 8 路径发 `step_end`（外层 cancel 跳过），warning/error/done 加 `step` 字段；(1e) 三处 persist 写 `"agent":True`+`"steps"`。
+  - [backend/app/skills/retrieve_notes.py](backend/app/skills/retrieve_notes.py)：成功返回的 metadata 加 `chunks` 数组（`doc_id`/`filename`/`heading`/`score`/`text`）。
 - 前端
-    - [frontend/src/types/index.ts](frontend/src/types/index.ts)：`ChatChunk.type` 加 3 新类型 + `finish`/`label`/`docs` 字段；新增 `RetrievedChunkDoc`/`AgentStepAction`/`AgentStepObservation`/`AgentStep`。
-    - [frontend/src/api/agent-chat.ts](frontend/src/api/agent-chat.ts)：`AgentStreamCallbacks` 加 `onStepStart`/`onStepEnd`/`onRetrieved`；switch 加 3 case，`retrieved` 显式蛇→驼映射（SSE 无拦截器）。
-    - [frontend/src/store/workspaceStore.ts](frontend/src/store/workspaceStore.ts)：加 `mutateLastStep(api, mutate)` helper + 7 个 action（`appendAgentStep`/`appendAgentStepThinking`/`appendAgentStepText`/`setAgentStepAction`/`setAgentStepObservation`/`setAgentStepRetrieved`/`completeAgentStep`），操作 `lastMessage.metadata.steps`；工厂签名 `(set, get, api) =>`。
-    - [frontend/src/components/AgentTrace.tsx](frontend/src/components/AgentTrace.tsx)（新增）：mirror `ThinkingBlock` 折叠/自动滚动；`StepCard` 子组件含 finish 徽标 + thinking/text/action/observation/retrieved 段（retrieved 非空时 observation 折进 `<details>`），retrieved chunk 一张 `<details>` 卡片。
-    - [frontend/src/components/MessageItem.tsx](frontend/src/components/MessageItem.tsx)：三分支渲染——`metadata.agent && steps 非空`→AgentTrace；`metadata.agent && thinking 非空无 steps`→ThinkingBlock（旧 2a/2b-i 兜底）；普通 chat→ThinkingBlock。
-    - [frontend/src/hooks/useChatStream.ts](frontend/src/hooks/useChatStream.ts)：`agentMode` 读取上移到占位创建前；占位 agentMode 时设 `metadata:{agent:true,steps:[]}`；agent 分支回调重写（onStepStart→appendAgentStep 等，onText→appendAgentStepText，onStepEnd finish==="final" 时去前缀提升为 content），不再调 `appendToAssistantThinking`。
+  - [frontend/src/types/index.ts](frontend/src/types/index.ts)：`ChatChunk.type` 加 3 新类型 + `finish`/`label`/`docs` 字段；新增 `RetrievedChunkDoc`/`AgentStepAction`/`AgentStepObservation`/`AgentStep`。
+  - [frontend/src/api/agent-chat.ts](frontend/src/api/agent-chat.ts)：`AgentStreamCallbacks` 加 `onStepStart`/`onStepEnd`/`onRetrieved`；switch 加 3 case，`retrieved` 显式蛇→驼映射（SSE 无拦截器）。
+  - [frontend/src/store/workspaceStore.ts](frontend/src/store/workspaceStore.ts)：加 `mutateLastStep(api, mutate)` helper + 7 个 action（`appendAgentStep`/`appendAgentStepThinking`/`appendAgentStepText`/`setAgentStepAction`/`setAgentStepObservation`/`setAgentStepRetrieved`/`completeAgentStep`），操作 `lastMessage.metadata.steps`；工厂签名 `(set, get, api) =>`。
+  - [frontend/src/components/AgentTrace.tsx](frontend/src/components/AgentTrace.tsx)（新增）：mirror `ThinkingBlock` 折叠/自动滚动；`StepCard` 子组件含 finish 徽标 + thinking/text/action/observation/retrieved 段（retrieved 非空时 observation 折进 `<details>`），retrieved chunk 一张 `<details>` 卡片。
+  - [frontend/src/components/MessageItem.tsx](frontend/src/components/MessageItem.tsx)：三分支渲染——`metadata.agent && steps 非空`→AgentTrace；`metadata.agent && thinking 非空无 steps`→ThinkingBlock（旧 2a/2b-i 兜底）；普通 chat→ThinkingBlock。
+  - [frontend/src/hooks/useChatStream.ts](frontend/src/hooks/useChatStream.ts)：`agentMode` 读取上移到占位创建前；占位 agentMode 时设 `metadata:{agent:true,steps:[]}`；agent 分支回调重写（onStepStart→appendAgentStep 等，onText→appendAgentStepText，onStepEnd finish==="final" 时去前缀提升为 content），不再调 `appendToAssistantThinking`。
 - 测试
-    - [backend/tests/test_agent_service_v2.py](backend/tests/test_agent_service_v2.py)：更新 5 用例加 steps/agent/retrieved 断言；新增 `test_wrap_skill_as_tool_stashes_metadata`（EchoSkill `_last_metadata=={"length":5}`）、`test_step_events_pair_on_every_path`（final/tool/max_steps 各路径 step_start/step_end 配对）。
-    - [backend/tests/test_agent_service.py](backend/tests/test_agent_service.py)：phase-1 回归 `test_single_step_final_answer` 断言 `events[0]=="step_start"`（原断言 `=="thinking"`）。
-    - [frontend/tests/components/AgentTrace.test.tsx](frontend/tests/components/AgentTrace.test.tsx)（新增 7 用例）：N 步 N 卡片、finish 徽标、retrieved 非空时 observation 折进 summary、retrieved null 时显示 observation、折叠/展开、空 steps、chunk 文本渲染。
-    - [frontend/tests/hooks/useChatStream.test.ts](frontend/tests/hooks/useChatStream.test.ts)：重写 agent 测试用 step-bounded SSE，断言 `metadata.steps.length===2`、`steps[0].finish==="tool"`、`steps[1].finish==="final"`、`content==="Final answer."`（前缀已去）、`thinking` 为空；新增 retrieved chunks 入 steps + step_end error 保留 partial step 用例。
+  - [backend/tests/test_agent_service_v2.py](backend/tests/test_agent_service_v2.py)：更新 5 用例加 steps/agent/retrieved 断言；新增 `test_wrap_skill_as_tool_stashes_metadata`（EchoSkill `_last_metadata=={"length":5}`）、`test_step_events_pair_on_every_path`（final/tool/max_steps 各路径 step_start/step_end 配对）。
+  - [backend/tests/test_agent_service.py](backend/tests/test_agent_service.py)：phase-1 回归 `test_single_step_final_answer` 断言 `events[0]=="step_start"`（原断言 `=="thinking"`）。
+  - [frontend/tests/components/AgentTrace.test.tsx](frontend/tests/components/AgentTrace.test.tsx)（新增 7 用例）：N 步 N 卡片、finish 徽标、retrieved 非空时 observation 折进 summary、retrieved null 时显示 observation、折叠/展开、空 steps、chunk 文本渲染。
+  - [frontend/tests/hooks/useChatStream.test.ts](frontend/tests/hooks/useChatStream.test.ts)：重写 agent 测试用 step-bounded SSE，断言 `metadata.steps.length===2`、`steps[0].finish==="tool"`、`steps[1].finish==="final"`、`content==="Final answer."`（前缀已去）、`thinking` 为空；新增 retrieved chunks 入 steps + step_end error 保留 partial step 用例。
 
 ### 验证
 
@@ -611,14 +614,14 @@
 ### 改动文件
 
 - 后端
-    - [backend/app/services/agent_service.py](backend/app/services/agent_service.py)：新增 `_DIRECT_ANSWER_TEMPLATE` 常量（禁止 ReAct/Thought/Action 格式）；在 `stream_agent_chat` 的 `persist_done`/`persist_error` 定义后、外层 `try:` 前插入 early-branch——`not tools` 时用 direct 模板重建 messages（`_build_initial_messages` 已 prepend SystemMessage，直接调用即得），单步流式 `step_start`→thinking/text→`step_end(finish="final")`→`done`，复用 `chat_model`/`assistant_msg`/`persist_*`；`metadata` 形状与 ReAct 一致（`agent:True`/`steps`/`tool_calls:[]`），reload 后前端三分支仍走 AgentTrace。直接作答 text 原样进 content（无 `Final Answer:` 前缀剥离——direct prompt 禁止该格式）。
-    - [backend/app/routers/agent.py](backend/app/routers/agent.py)：`skills = list(iter_skills())` 处加注释说明「无 KB + 无注册 skill 时 `tools=[]` → AgentService 跳过 ReAct 直接作答，不崩」。
+  - [backend/app/services/agent_service.py](backend/app/services/agent_service.py)：新增 `_DIRECT_ANSWER_TEMPLATE` 常量（禁止 ReAct/Thought/Action 格式）；在 `stream_agent_chat` 的 `persist_done`/`persist_error` 定义后、外层 `try:` 前插入 early-branch——`not tools` 时用 direct 模板重建 messages（`_build_initial_messages` 已 prepend SystemMessage，直接调用即得），单步流式 `step_start`→thinking/text→`step_end(finish="final")`→`done`，复用 `chat_model`/`assistant_msg`/`persist_*`；`metadata` 形状与 ReAct 一致（`agent:True`/`steps`/`tool_calls:[]`），reload 后前端三分支仍走 AgentTrace。直接作答 text 原样进 content（无 `Final Answer:` 前缀剥离——direct prompt 禁止该格式）。
+  - [backend/app/routers/agent.py](backend/app/routers/agent.py)：`skills = list(iter_skills())` 处加注释说明「无 KB + 无注册 skill 时 `tools=[]` → AgentService 跳过 ReAct 直接作答，不崩」。
 - 前端
-    - [frontend/src/components/WorkspaceLayout.tsx](frontend/src/components/WorkspaceLayout.tsx)：`handleSend` 在 `selectedModel` guard 后加 `agentMode && !selectedKbId` toast 提示（warning，「未选择知识库：本轮 Agent 将直接作答，无法检索笔记」），**不阻止发送**——agent 模式不等于必须检索，强制拦会误伤无需 KB 的提问（如「写首诗」）。
-    - [frontend/src/components/InputArea.tsx](frontend/src/components/InputArea.tsx)：`agentMode` 提示段落里条件渲染无 KB 警告（amber 文字「未选择知识库，将无法检索笔记，直接作答」）；`selectedKbId` 直接从 store 读（同 ChatHeader 模式，避免 prop drilling）。
+  - [frontend/src/components/WorkspaceLayout.tsx](frontend/src/components/WorkspaceLayout.tsx)：`handleSend` 在 `selectedModel` guard 后加 `agentMode && !selectedKbId` toast 提示（warning，「未选择知识库：本轮 Agent 将直接作答，无法检索笔记」），**不阻止发送**——agent 模式不等于必须检索，强制拦会误伤无需 KB 的提问（如「写首诗」）。
+  - [frontend/src/components/InputArea.tsx](frontend/src/components/InputArea.tsx)：`agentMode` 提示段落里条件渲染无 KB 警告（amber 文字「未选择知识库，将无法检索笔记，直接作答」）；`selectedKbId` 直接从 store 读（同 ChatHeader 模式，避免 prop drilling）。
 - 测试
-    - [backend/tests/test_agent_service_v2.py](backend/tests/test_agent_service_v2.py)：新增 `test_no_tools_skips_react_direct_answer`（`skills=[]` → 单步直接作答，无 action/observation/warning 事件，`content`/`steps[0].text` 原样，`finish=="final"`，仅消耗 1 个 model turn）；`test_single_step_final_answer`/`test_max_steps_exceeded`/`test_abort_persists_metadata_aborted` 改挂 `skills=[EchoSkill()]` 保持 ReAct 路径（否则 `tools=[]` 触发 direct 分支，max-steps 永不触发、thinking 断言失败）。
-    - [backend/tests/test_agent_service.py](backend/tests/test_agent_service.py)（phase-1 回归）：导入 `EchoSkill`，5 个 `stream_agent_chat` 调用点全挂 `skills=[EchoSkill()]`（multi-step/max-steps/exploding/abort 测试断言 `msg.thinking` 含 step 内容，direct 分支 thinking 为空会失败）。
+  - [backend/tests/test_agent_service_v2.py](backend/tests/test_agent_service_v2.py)：新增 `test_no_tools_skips_react_direct_answer`（`skills=[]` → 单步直接作答，无 action/observation/warning 事件，`content`/`steps[0].text` 原样，`finish=="final"`，仅消耗 1 个 model turn）；`test_single_step_final_answer`/`test_max_steps_exceeded`/`test_abort_persists_metadata_aborted` 改挂 `skills=[EchoSkill()]` 保持 ReAct 路径（否则 `tools=[]` 触发 direct 分支，max-steps 永不触发、thinking 断言失败）。
+  - [backend/tests/test_agent_service.py](backend/tests/test_agent_service.py)（phase-1 回归）：导入 `EchoSkill`，5 个 `stream_agent_chat` 调用点全挂 `skills=[EchoSkill()]`（multi-step/max-steps/exploding/abort 测试断言 `msg.thinking` 含 step 内容，direct 分支 thinking 为空会失败）。
 
 ### 验证
 

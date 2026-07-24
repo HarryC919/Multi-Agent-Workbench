@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { Paperclip, Send, Square, X, Brain, Zap } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Tooltip } from '@/components/ui/tooltip'
 import { uploadFile } from '@/api/upload'
 import { useToastStore } from '@/store/toastStore'
 import { useWorkspaceStore } from '@/store/workspaceStore'
@@ -175,18 +176,8 @@ export function InputArea({
             ))}
           </select>
 
-          <button
-            type="button"
-            onClick={() => onThinkingToggle(!thinkingEnabled)}
-            disabled={agentMode}
-            className={cn(
-              'flex h-8 items-center gap-1 rounded-md border px-2 text-xs font-medium transition-colors',
-              thinkingEnabled
-                ? 'border-blue-500 bg-background text-blue-600 dark:border-blue-400 dark:bg-background dark:text-blue-400'
-                : 'border-input bg-background text-muted-foreground hover:border-blue-400 hover:text-blue-500',
-              agentMode && 'cursor-not-allowed opacity-60',
-            )}
-            title={
+          <Tooltip
+            content={
               agentMode
                 ? 'Agent 模式下强制启用深度思考'
                 : thinkingEnabled
@@ -194,24 +185,38 @@ export function InputArea({
                   : '开启深度思考'
             }
           >
-            <Brain className={cn('h-3.5 w-3.5', thinkingEnabled && 'fill-blue-100 dark:fill-blue-100')} />
-            深度思考
-          </button>
+            <button
+              type="button"
+              onClick={() => onThinkingToggle(!thinkingEnabled)}
+              disabled={agentMode}
+              className={cn(
+                'flex h-8 items-center gap-1 rounded-md border px-2 text-xs font-medium transition-colors',
+                thinkingEnabled
+                  ? 'border-blue-500 bg-background text-blue-600 dark:border-blue-400 dark:bg-background dark:text-blue-400'
+                  : 'border-input bg-background text-muted-foreground hover:border-blue-400 hover:text-blue-500',
+                agentMode && 'cursor-not-allowed opacity-60',
+              )}
+            >
+              <Brain className={cn('h-3.5 w-3.5', thinkingEnabled && 'fill-blue-100 dark:fill-blue-100')} />
+              深度思考
+            </button>
+          </Tooltip>
 
-          <button
-            type="button"
-            onClick={() => onAgentModeToggle(!agentMode)}
-            className={cn(
-              'flex h-8 items-center gap-1 rounded-md border px-2 text-xs font-medium transition-colors',
-              agentMode
-                ? 'border-amber-500 bg-background text-amber-700 dark:border-amber-400 dark:bg-background dark:text-amber-300'
-                : 'border-input bg-background text-muted-foreground hover:border-amber-400 hover:text-amber-600',
-            )}
-            title={agentMode ? '关闭 Agent 模式' : '开启 Agent 模式（多步推理 + 工具）'}
-          >
-            <Zap className={cn('h-3.5 w-3.5', agentMode && 'fill-amber-200 dark:fill-amber-200')} />
-            Agent
-          </button>
+          <Tooltip content={agentMode ? '关闭 Agent 模式' : '开启 Agent 模式（多步推理 + 工具）'}>
+            <button
+              type="button"
+              onClick={() => onAgentModeToggle(!agentMode)}
+              className={cn(
+                'flex h-8 items-center gap-1 rounded-md border px-2 text-xs font-medium transition-colors',
+                agentMode
+                  ? 'border-amber-500 bg-background text-amber-700 dark:border-amber-400 dark:bg-background dark:text-amber-300'
+                  : 'border-input bg-background text-muted-foreground hover:border-amber-400 hover:text-amber-600',
+              )}
+            >
+              <Zap className={cn('h-3.5 w-3.5', agentMode && 'fill-amber-200 dark:fill-amber-200')} />
+              Agent
+            </button>
+          </Tooltip>
         </div>
 
         {isStreaming ? (
