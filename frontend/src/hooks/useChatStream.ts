@@ -147,7 +147,9 @@ export function useChatStream(): UseChatStreamReturn {
           },
           onDone: () => {
             store.setAssistantStatus('done')
-            store.loadConversations()
+            // Fire-and-forget refresh: a failed list reload is non-fatal and
+            // must not surface as an unhandled rejection.
+            store.loadConversations().catch(() => {})
           },
           onError: (error) => {
             store.appendToAssistant(`\n\n**Agent Error:** ${error.message}`)
@@ -186,7 +188,9 @@ export function useChatStream(): UseChatStreamReturn {
         },
         onDone: () => {
           store.setAssistantStatus('done')
-          store.loadConversations()
+          // Fire-and-forget refresh: a failed list reload is non-fatal and
+          // must not surface as an unhandled rejection.
+          store.loadConversations().catch(() => {})
         },
         onError: (error) => {
           store.appendToAssistant(`\n\n**Error:** ${error.message}`)
