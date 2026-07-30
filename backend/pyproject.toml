@@ -36,6 +36,9 @@ dependencies = [
     "chromadb>=0.5",
     "langchain-chroma>=0.1",
     "sentence-transformers>=2.7",
+    # Phase 3 — web search skill (DuckDuckGo) + markdown skill frontmatter parsing.
+    "duckduckgo-search>=8.0,<9",
+    "pyyaml>=6.0",
 ]
 
 [dependency-groups]

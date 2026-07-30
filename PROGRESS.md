@@ -1,6 +1,6 @@
 # 项目进度跟踪
 
-> 最后更新：2026-07-20（AgentService phase 2a）
+> 最后更新：2026-07-30（Phase 3 第一轮：Markdown 技能 + 联网搜索 + Agent 交错输出）
 
 ## 一、总体状态
 
@@ -20,6 +20,9 @@
 | 模型级 API Key                                   | ✅ 已完成 | ModelConfig 加 api_key 字段；compatible 模型可填 key，factory 优先用模型 key 回退 .env；key 不回传明文 |
 | 会话标题自动生成                                 | ✅ 已实现 | 后端 service 层按首条消息前 50 字生成（已验证）                                                        |
 | 凭证/环境配置                                    | ✅ 已修复 | 见[已完成的修复](#三已完成的修复)                                                                       |
+| Markdown 技能导入（.md 文件定义技能）            | ✅ 完成   | `skills_md/` 目录扫描 + YAML frontmatter 解析；`POST /api/skills/reload` 热重载                        |
+| DuckDuckGo 联网搜索 skill                        | ✅ 完成   | `web_search` skill；引号剥离 + 多后端重试兜底                                                          |
+| Agent 每步输出交错渲染                            | ✅ 完成   | `说明:` 字段 + `narration` SSE 事件；推理与输出逐步交替，narration 作为正文渲染                        |
 
 ---
 
@@ -254,6 +257,9 @@
 - [~] **AgentService 第二期（2a：LangChain + Tool Calling，不含 RAG）**：完成 LangChain/LangGraph 引入、Skill → LangChain Tool 桥、temperature 透传到 adapter、SSE `action`/`observation`/`warning` 事件、`Message.metadata` JSON 列持久化 step_count/aborted/tool_calls、前端 Agent 模式 toggle。详见第十四节工作记录。**2b（RAG + 知识库 UI + Agent 轨迹面板）仍待启动。**
 
 - [ ] **AgentService 第二期**：在 AgentService 内部引入 LangChain/LangGraph（范围严格限制在该模块内），叠加 **Tool Calling** 与 **RAG**（markdown 笔记检索）能力；Skills 挂载可在此之后接入。
+
+- [X] **Phase 3 第一轮：Markdown 技能 + 联网搜索 + Agent 交错输出**：新增 `.md` 文件定义技能（`skills_md/` 目录 + frontmatter 解析 + 热重载）；DuckDuckGo `web_search` skill（引号剥离 + 多后端重试）；ReAct 提示词加 `说明:` 字段 + `narration` SSE 事件，AgentTrace 改为推理与输出逐步交错渲染（narration 作为正文）。详见第十八节工作记录。
+- [ ] **Phase 3 后续轮次**：厂商原生 tool-calling API（OpenAI `tool_calls` / Anthropic `tools`）替换 ReAct prompt 注入；异步化文档处理；混合检索（BM25 + 向量）；PDF/DOCX RAG 放开；Skills 管理 UI。
 
 ---
 
@@ -634,3 +640,95 @@
 - **KB 未选拦而不阻**：toast + inline 提示，不 `return`。理由：agent 模式 ≠ 必须检索，强制拦误伤无需 KB 的提问；后端兜底已保证不崩。把「是否需要检索」的选择权交给用户。
 - **direct 分支复用 AgentTrace 契约**：单步 `step_start`/`step_end(finish="final")` + `metadata.agent`/`steps`，前端无需特殊处理，一张 trace 卡片 + 正文提升逻辑（`onStepEnd finish==="final"` 去 `Final Answer:` 前缀——direct text 无此前缀，regex 不匹配，原样保留）。
 - **不加 none 计数器 escape**：用户只选「跳过 ReAct」，`tools=[]` 已是唯一死循环入口；有工具时连续 `Action: none` 是模型/prompt 层面问题（含 GLM 原生 token 渗出），留后续。
+
+## 十八、本次工作记录（Phase 3 第一轮：Markdown 技能 + 联网搜索 + Agent 交错输出，2026-07-30）
+
+落地 DEVELOPMENT_PLAN §11.7 第三期第一轮的三项内容：(1) 完善 skills 模块支持 `.md` 文件导入技能；(2) DuckDuckGo 联网搜索 skill；(3) Agent 多步推理每步输出可见且作为正文渲染（含 web_search 无返回修复）。后两项是对实测 `Agent.log` 反馈的迭代修复。
+
+### 18.1 Markdown 技能导入（.md 文件定义技能）
+
+`.md` 文件放在 `backend/skills_md/`，YAML frontmatter 提供 `name`/`description`（缺省回退文件名作 name、首个 `#` 标题作 description），正文作 system prompt。Agent 调用时，skill 用其 markdown 正文做单轮 LLM 调用，输入作 user 消息。
+
+**改动文件**：
+
+- 新增 [backend/app/skills/markdown_skill.py](backend/app/skills/markdown_skill.py)：`MarkdownSkill` 类（实现 Skill 协议，`_chat_model` 由 `_wrap_skill_as_tool` 注入，`run()` 内部 import LangChain `SystemMessage`/`HumanMessage` 保持模块级无框架依赖）；`parse_markdown_skill(filepath)` 解析 frontmatter + 兜底。
+- 新增 [backend/skills_md/translator.md](backend/skills_md/translator.md) + [summarizer.md](backend/skills_md/summarizer.md)：两个示例技能。
+- [backend/app/skills/registry.py](backend/app/skills/registry.py)：新增 `discover_markdown_skills(dir)` / `reload_markdown_skills(dir)`；`_MARKDOWN_SKILL_NAMES` 集合跟踪来源，reload 时仅清 markdown skill 不动 Python skill；`list_skills()` 返回值加 `source` 字段（`python`/`markdown`）。
+- [backend/app/skills/__init__.py](backend/app/skills/__init__.py)：导出 `discover_markdown_skills`/`reload_markdown_skills`。
+- [backend/app/config.py](backend/app/config.py)：新增 `skills_md_dir="skills_md"`。
+- [backend/main.py](backend/main.py)：lifespan 启动时 `mkdir` + `discover_markdown_skills`。
+- [backend/app/services/agent_service.py](backend/app/services/agent_service.py)：`_build_chat_model` 提前到 `_select_tools` 之前；`_wrap_skill_as_tool`/`_select_tools` 接 `chat_model` 参数，对有 `set_chat_model` 的 skill（MarkdownSkill）注入模型。
+- [backend/app/routers/skills.py](backend/app/routers/skills.py)：`SkillManifestItem` 加 `source` 字段；新增 `POST /api/skills/reload` 热重载端点（**静态路由必须在 `/{skill_name}` 之前声明**，否则 `reload` 被当 skill_name）。
+- 新增 [backend/tests/test_markdown_skills.py](backend/tests/test_markdown_skills.py)：9 用例（frontmatter 解析/兜底/空文件/坏 YAML/重复跳过/reload 清理重导/LLM 调用消息校验/无模型报错/API source 字段/reload 端点）。
+
+### 18.2 DuckDuckGo 联网搜索 skill
+
+**新增文件**：
+
+- [backend/app/skills/web_search.py](backend/app/skills/web_search.py)：`WebSearchSkill`，用 `duckduckgo_search.DDGS.text()`。特性：剥离查询首尾引号（模型常给带引号的 `Action Input`，触发精确匹配导致少结果）；依次尝试 `auto`/`html`/`lite` 三后端带退避重试（DuckDuckGo 限流后静默返空）；失败返可操作错误信息（"改用英文关键词重试"）；`asyncio.to_thread` 保持 ReAct 循环响应；抑制 `duckduckgo_search` 改名 `ddgs` 的 RuntimeWarning 噪声。
+- [backend/tests/test_web_search_skill.py](backend/tests/test_web_search_skill.py)：10 用例（空查询/引号剥离/格式化结果/无结果/max_results 裁剪/多后端重试恢复/全失败错误形态/API 列表+调用）。
+
+**依赖**：[backend/pyproject.toml](backend/pyproject.toml) 加 `duckduckgo-search>=8.0,<9` + `pyyaml>=6.0`（原为传递依赖，显式化）。
+
+### 18.3 Agent 每步输出可见 + 交错渲染 + web_search 无返回修复
+
+**实测 `Agent.log` 反馈的两个问题**：(1) 每步推理输出埋在折叠推理块内，未作为正文渲染；(2) web_search 总是"无返回结果"。
+
+**根因定位**：
+- 问题 1：每步 `text`（含 `Thought`/`Action`/叙述）只进 AgentTrace 卡片，仅最终 `Final Answer` 提升为正文。
+- 问题 2 三层根因：①模型**伪造 Observation**（自己写 `Observation: [web_search: no results...]`，忽略真实结果）；②`Action Input` 带引号触发精确匹配；③DuckDuckGo 限流返空。
+
+**改动文件**：
+
+- [backend/app/services/prompts/react_system.txt](backend/app/services/prompts/react_system.txt)：重写 ReAct 模板--每步以 `说明:` 开头（面向用户一句话，会作正文输出）；明确"写完 `Action Input:` 必须立即停止，绝不自己写 Observation"；最终步也先写 `说明:` 再写 Final Answer。
+- [backend/app/services/agent_service.py](backend/app/services/agent_service.py)：
+  - 新增 `_extract_narration()` 解析 `说明:` 行（兼容全角冒号）；`_truncate_after_action_input()` 截断 `Action Input:` 之后内容（剥离伪造的 Observation，真实 Observation 由系统作下一条 HumanMessage 注入）；`_extract_final_answer()` 兼容 `Final Answer：` 全角冒号。
+  - 每步 streaming 完成后：提取 `说明:` -> 存 `current_step["narration"]` + 发 `narration` SSE 事件 -> 截断后的 step_content 才 append 为 AIMessage。
+  - step dict（含 direct-answer 路径）加 `narration` 字段。
+- 前端类型 [frontend/src/types/index.ts](frontend/src/types/index.ts)：`ChatChunk.type` 加 `narration`；`AgentStep` 加 `narration?: string | null`。
+- 前端 API [frontend/src/api/agent-chat.ts](frontend/src/api/agent-chat.ts)：`AgentStreamCallbacks` 加 `onNarration`；switch 加 `narration` case。
+- 前端 store [frontend/src/store/workspaceStore.ts](frontend/src/store/workspaceStore.ts)：新增 `setAgentStepNarration(text)`（存到当前 step 上，**不再堆进 message.content**）；step seed 加 `narration: null`。
+- 前端 hook [frontend/src/hooks/useChatStream.ts](frontend/src/hooks/useChatStream.ts)：`onNarration` -> `setAgentStepNarration`；`onStepEnd finish==="final"` 仍提升最终答案到 `message.content`（narration 不进 content，避免与正文混）。
+- 新增 [frontend/src/components/MarkdownContent.tsx](frontend/src/components/MarkdownContent.tsx)：共享 markdown 渲染器，narration 与最终答案用同一套 `prose` 样式。
+- 重写 [frontend/src/components/AgentTrace.tsx](frontend/src/components/AgentTrace.tsx)：**交错渲染**--每步一个可折叠推理卡片（仅 Thought/Action/Observation，`说明:` 行用 `stripNarration` 剔除），卡片下方紧跟该步 `说明:` 作为**正文**（MarkdownContent，与最终答案同样式，始终可见不随卡片折叠）；去掉外层滚动容器让正文自然流动。
+- 简化 [frontend/src/components/MessageItem.tsx](frontend/src/components/MessageItem.tsx)：最终答案改用共享 MarkdownContent。
+- [backend/app/skills/web_search.py](backend/app/skills/web_search.py)：见 18.2（引号剥离 + 多后端重试 + 限流兜底错误信息）。
+
+**渲染结构（对照 `Agent-should.log`）**：
+
+```
+第 1 步 推理 ▼  ← 可折叠卡片（只含 Thought/Action/Observation，无 说明）
+  ┌──────────────────┐
+  │ Thought: ...     │
+  │ Action: web_search│
+  │ Observation: ...  │
+  └──────────────────┘
+我先分别搜索一下这三个计划...   ← 正文输出（说明），始终可见
+
+第 2 步 推理 ▼
+  ...
+继续搜索阿里Token Plan...       ← 正文输出
+
+...
+
+第 N 步 推理 ▼
+  ...
+搜索不太顺利，我基于已有信息...  ← 正文输出（说明）
+[最终答案]                      ← 正文（message.content）
+```
+
+- 测试 [backend/tests/test_agent_service_v2.py](backend/tests/test_agent_service_v2.py)：新增 `_extract_narration`/`_truncate_after_action_input`/全角冒号 final answer 等 9 个单元测试 + `test_narration_events_emitted_and_stored_per_step`（narration 事件发出且存进 step transcript）+ `test_fabricated_observation_not_in_next_step_context`（伪造 Observation 被截断，模型基于真实结果推理）。
+
+### 验证
+
+- 后端：`cd backend && uv run pytest -q` -> **118 passed**（原 88 + web_search 10 + markdown 9 + agent narration/truncation 11）。
+- 前端：`npx tsc --noEmit` 通过；`npm run build` 成功；`npm run lint` 仅 1 个**预先存在**的 `useConversation.ts` 警告。
+- 烟雾测试（scripted chat model）：narration 事件按步发出且存进持久化 step transcript；web_search 首次调用返回真实结果（IP 未限流时），限流后多后端重试兜底。
+- 实测修复的 `openai_adapter.py`：会话开始时发现工作区该文件被清空（0 行，HEAD 有 90 行），系预先存在的损坏，已 `git checkout HEAD --` 恢复，否则 `main` 模块无法导入。
+
+### 已知限制
+
+- **DuckDuckGo 限流**：服务端反爬策略，同 IP 短时间多次请求后静默返空。重试逻辑尝试三后端兜底；真实使用（每次对话 1-2 次搜索）通常正常；被限流时错误信息引导改用英文关键词。长期若需更稳定可换需 API key 的搜索服务。
+- **`duckduckgo_search` 改名 `ddgs`**：当前版本 8.1.1 仍可用（仅 RuntimeWarning 噪声，已用 `filterwarnings` 抑制）；未来可考虑切 `ddgs` 包。
+- **Skills 管理 UI 未做**：ChatHeader「Skills」按钮仍 disabled；markdown 技能管理走文件系统 + `POST /api/skills/reload` 热重载；上传/编辑 UI 留后续轮次。
+- **每步输出依赖模型遵守提示词**：若模型不输出 `说明:` 行，该步无正文输出（优雅降级，不崩）。提示词已强约束每步必须 `说明:` 开头。

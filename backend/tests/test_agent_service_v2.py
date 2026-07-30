@@ -38,6 +38,8 @@ from app.services.agent_service import (
     _wrap_skill_as_tool,
     _parse_action,
     _extract_final_answer,
+    _extract_narration,
+    _truncate_after_action_input,
 )
 from app.services.conversation_service import ConversationService
 from app.skills.base import SkillResult
@@ -616,3 +618,125 @@ async def test_step_events_pair_on_every_path(monkeypatch):
     assert [e["finish"] for e in ends] == ["tool", "tool", "max_steps"]
     # step labels carry the localized "第 N 步" wording.
     assert starts[0]["label"] == "第 1 步"
+
+
+# ----------------------------------------------------------- Phase 3 parsing
+
+
+def test_extract_narration_with_colon():
+    content = "说明: 我先用联网搜索查一下\nThought: need to search\nAction: web_search"
+    assert _extract_narration(content) == "我先用联网搜索查一下"
+
+
+def test_extract_narration_with_chinese_colon():
+    content = "说明：中文冒号也可以\nThought: x"
+    assert _extract_narration(content) == "中文冒号也可以"
+
+
+def test_extract_narration_absent_returns_none():
+    assert _extract_narration("Thought: no narration here\nAction: echo") is None
+
+
+def test_extract_narration_takes_first_match():
+    # Only the first 说明 line is taken (one narration per step).
+    content = "说明: first\n说明: second"
+    assert _extract_narration(content) == "first"
+
+
+def test_truncate_strips_fabricated_observation():
+    content = (
+        "说明: test\nThought: x\nAction: web_search\n"
+        "Action Input: hello\nObservation: FABRICATED result"
+    )
+    truncated = _truncate_after_action_input(content)
+    assert "FABRICATED" not in truncated
+    assert truncated.endswith("Action Input: hello\n")
+    # Everything before Action Input is preserved.
+    assert "说明: test" in truncated
+    assert "Action: web_search" in truncated
+
+
+def test_truncate_leaves_final_answer_unchanged():
+    content = "说明: test\nFinal Answer: the real answer"
+    assert _truncate_after_action_input(content) == content
+
+
+def test_truncate_no_action_input_returns_unchanged():
+    content = "说明: test\nThought: just thinking, no action"
+    assert _truncate_after_action_input(content) == content
+
+
+def test_extract_final_answer_chinese_colon():
+    assert _extract_final_answer("Final Answer：你好世界") == "你好世界"
+
+
+def test_extract_final_answer_english_colon():
+    assert _extract_final_answer("Final Answer: hello world") == "hello world"
+
+# ----------------------------------------------------------- Phase 3 narration
+
+
+@pytest.mark.asyncio
+async def test_narration_events_emitted_and_stored_per_step(monkeypatch):
+    """Phase 3: each step's `说明:` line is emitted as a `narration` SSE event
+    AND stashed on the persisted step transcript (step.narration), so the
+    frontend can render reasoning + output interleaved rather than dumping all
+    output at the bottom.
+    """
+    conv = await _create_conversation()
+    chat_model = _ScriptedChatModel(turns=[
+        [_aichunk(content="说明: 我先用 echo 测试\nThought: 测试\nAction: echo\nAction Input: hi")],
+        [_aichunk(content="说明: 测试成功，给结论\nFinal Answer: done - echo said hi")],
+    ])
+    async with AsyncSessionLocal() as db:
+        svc = AgentService(db)
+        monkeypatch.setattr(svc, "_build_chat_model", lambda adapter, request: chat_model)
+        events, _ = await _drain(
+            svc.stream_agent_chat(_user_req(), _FakeAdapter(), conv, skills=[EchoSkill()])
+        )
+
+    narrations = [e for e in events if e["type"] == "narration"]
+    assert len(narrations) == 2
+    assert narrations[0]["step"] == 1
+    assert "echo 测试" in narrations[0]["content"]
+    assert narrations[1]["step"] == 2
+    assert "测试成功" in narrations[1]["content"]
+
+    # The persisted transcript carries narration per step.
+    msg = await _get_assistant_msg(conv.id)
+    steps = msg.metadata_["steps"]
+    assert len(steps) == 2
+    assert steps[0]["narration"] == "我先用 echo 测试"
+    assert steps[1]["narration"] == "测试成功，给结论"
+    # The final answer (message.content) is separate from narrations.
+    assert msg.content == "done - echo said hi"
+
+
+@pytest.mark.asyncio
+async def test_fabricated_observation_not_in_next_step_context(monkeypatch):
+    """Phase 3: when the model fabricates an `Observation:` after `Action Input:`,
+    the truncation strips it so the next step reasons over the REAL observation
+    (appended by the system), not the hallucinated one.
+    """
+    conv = await _create_conversation()
+    # Step 1: model writes a fabricated Observation after Action Input.
+    chat_model = _ScriptedChatModel(turns=[
+        [_aichunk(
+            content="说明: 测试\nThought: go\nAction: echo\nAction Input: hi\n"
+            "Observation: FABRICATED_HALLUCINATION"
+        )],
+        [_aichunk(content="Final Answer: ok")],
+    ])
+    async with AsyncSessionLocal() as db:
+        svc = AgentService(db)
+        monkeypatch.setattr(svc, "_build_chat_model", lambda adapter, request: chat_model)
+        events, _ = await _drain(
+            svc.stream_agent_chat(_user_req(), _FakeAdapter(), conv, skills=[EchoSkill()])
+        )
+
+    # The real observation (echo returns "hi") must appear in the SSE stream;
+    # the fabricated one must not be the observation the agent sees.
+    observations = [e for e in events if e["type"] == "observation"]
+    assert observations, "expected at least one observation event"
+    assert "hi" in observations[0]["content"]
+    assert "FABRICATED" not in observations[0]["content"]

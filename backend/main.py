@@ -1,5 +1,6 @@
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,6 +11,8 @@ from app.logging_config import setup_logging
 from app.models import Conversation, Message, UploadedFile, ModelConfig, KnowledgeBase, KnowledgeDoc  # noqa: F401
 from app.routers import agent, chat, conversations, knowledge, models, skills, upload
 from app.seed import seed_models
+
+_BACKEND_ROOT = Path(__file__).resolve().parent
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -77,6 +80,13 @@ async def lifespan(app: FastAPI):
 
     async with AsyncSessionLocal() as session:
         await seed_models(session)
+
+    # Phase 3: discover markdown-defined skills (.md files in skills_md/).
+    from app.config import settings
+    from app.skills import discover_markdown_skills
+    skills_dir = _BACKEND_ROOT / settings.skills_md_dir
+    skills_dir.mkdir(exist_ok=True)
+    discover_markdown_skills(skills_dir)
 
     yield
     # Shutdown: dispose engine

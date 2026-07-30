@@ -68,6 +68,10 @@ class Settings(BaseSettings):
     # Database
     database_url: str = "sqlite+aiosqlite:///./workbench.db"
 
+    # Phase 3 — markdown-defined skills. Directory scanned for .md files at
+    # startup; relative to the backend root (resolved at import time).
+    skills_md_dir: str = "skills_md"
+
     # AgentService phase 2b-i — RAG / knowledge base knobs.
     # Embedding uses local sentence-transformers + bge-small-zh-v1.5; if torch
     # or the model is unavailable, EmbeddingService falls back to a FakeEmbedder

@@ -7,6 +7,8 @@ export interface AgentStreamCallbacks {
   onAction?: (name: string, input: string, step: number) => void
   onObservation?: (name: string, content: string, step: number) => void
   onWarning?: (message: string, maxSteps?: number) => void
+  // Phase 3: per-step narration lifted to the main chat body.
+  onNarration?: (content: string, step: number) => void
   onDone?: (finishReason: string) => void
   onError?: (error: Error) => void
   onFinally?: () => void
@@ -104,6 +106,9 @@ export function sendAgentChatStream(
                 break
               case 'observation':
                 if (chunk.name) callbacks.onObservation?.(chunk.name, chunk.content ?? '', chunk.step ?? 0)
+                break
+              case 'narration':
+                if (chunk.content) callbacks.onNarration?.(chunk.content, chunk.step ?? 0)
                 break
               case 'warning':
                 callbacks.onWarning?.(chunk.message ?? '', chunk.maxSteps)

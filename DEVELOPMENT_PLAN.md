@@ -391,14 +391,15 @@ My_Agent/
 
 ## 10. 目前状态
 
-| 阶段                                                            | 状态                   | 说明                                                                                                                                                                                                                         |
-| --------------------------------------------------------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 阶段一~五（脚手架 / 后端核心 / 前端核心 / 集成测试 / 部署文档） | ✅ 完成                | v1.0 验收条件全部满足，见 README 与 PROGRESS 一~九节                                                                                                                                                                         |
-| 跨平台兼容 + 部署交付物 + 性能测试 + Skills 挂载                | ✅ 完成                | docker-compose 与 GHA 三平台 matrix 落地，详见 PROGRESS 第十二节                                                                                                                                                             |
-| AgentService 第一期（多轮推理 / ReAct 无工具）                  | ✅ 完成                | `POST /api/agent-chat` 落地，详见 PROGRESS 第十三节                                                                                                                                                                        |
-| AgentService 第二期 2a（LangChain + Tool Calling，不含 RAG）    | ✅ 完成                | Skill 经`StructuredTool` 包装接入；前端 Agent toggle；`Message.metadata` JSON 列持久化 step_count/aborted/tool_calls。详见 PROGRESS 第十四节                                                                             |
-| AgentService 第二期 2b-i（RAG + 知识库管理）                    | ✅ 完成                | 本地 bge-small-zh + chromadb；KB CRUD + 文档上传/分块/检索；retrieve_notes 工厂 skill；普通 chat 静默注入、Agent 模式 ReAct 自主调用。后端 89 测试 / 前端 15 测试全过。Docker torch 烘焙 + CI 留尾巴。详见 PROGRESS 第十五节 |
-| AgentService 第二期 2b-ii（AgentTrace 面板）                    | ⏳ 计划已落地，见 11.5 | 2b-i 完成后开工                                                                                                                                                                                                              |
+| 阶段                                                            | 状态    | 说明                                                                                                                                                                                                                         |
+| --------------------------------------------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 阶段一~五（脚手架 / 后端核心 / 前端核心 / 集成测试 / 部署文档） | ✅ 完成 | v1.0 验收条件全部满足，见 README 与 PROGRESS 一~九节                                                                                                                                                                         |
+| 跨平台兼容 + 部署交付物 + 性能测试 + Skills 挂载                | ✅ 完成 | docker-compose 与 GHA 三平台 matrix 落地，详见 PROGRESS 第十二节                                                                                                                                                             |
+| AgentService 第一期（多轮推理 / ReAct 无工具）                  | ✅ 完成 | `POST /api/agent-chat` 落地，详见 PROGRESS 第十三节                                                                                                                                                                        |
+| AgentService 第二期 2a（LangChain + Tool Calling，不含 RAG）    | ✅ 完成 | Skill 经`StructuredTool` 包装接入；前端 Agent toggle；`Message.metadata` JSON 列持久化 step_count/aborted/tool_calls。详见 PROGRESS 第十四节                                                                             |
+| AgentService 第二期 2b-i（RAG + 知识库管理）                    | ✅ 完成 | 本地 bge-small-zh + chromadb；KB CRUD + 文档上传/分块/检索；retrieve_notes 工厂 skill；普通 chat 静默注入、Agent 模式 ReAct 自主调用。后端 89 测试 / 前端 15 测试全过。Docker torch 烘焙 + CI 留尾巴。详见 PROGRESS 第十五节 |
+| AgentService 第二期 2b-ii（AgentTrace 面板）                    | ✅ 完成 | 结构化 step 卡片 + step-bounded SSE 事件；前端`<AgentTrace>` 组件。后端 88 测试 / 前端 23 测试全过。详见 PROGRESS 第十六节                                                                                                 |
+| 第三期第一轮（Markdown 技能 + 联网搜索 + Agent 交错输出）       | ✅ 完成 | `.md` 文件定义技能 + 热重载；DuckDuckGo `web_search` skill（引号剥离 + 多后端重试）；ReAct `说明:` 字段 + `narration` 事件，推理与输出逐步交错渲染。后端 118 测试全过。详见 PROGRESS 第十八节                        |
 
 ---
 
@@ -428,7 +429,7 @@ My_Agent/
 - 负责：工具调用（Tool Calling 部分）；RAG 推迟到 2b。
 - 落地：`Message.metadata` JSON 列；ChatChunk 加 `action`/`observation`/`warning` 类型；前端 InputArea 加 Agent toggle；详见 PROGRESS 第十四节。
 
-### 11.4 AgentService 第二期 2b-i：RAG + 知识库管理（计划已定，待开工）
+### 11.4 AgentService 第二期 2b-i：RAG + 知识库管理 - ✅ 完成（2026-07-21）
 
 **目标**：在已有的 Skills + Tool Calling 框架之上，引入向量检索与知识库管理，让 Agent 能在多步推理中主动查询用户上传的 markdown 笔记；普通 chat 模式也能把 KB 命中段落自动注入上下文。本期不涉及 AgentTrace 面板（留 2b-ii）。
 
@@ -512,7 +513,7 @@ My_Agent/
 - `cd frontend && npm run test && npm run build && npm run lint` 全过。
 - 手动：创建 KB「我的笔记」→ 上传 `notes.md` → ChatHeader 下拉选「我的笔记」→ 普通 chat 问笔记内容 → 验证回复引用；切换 Agent 模式 → 验证 `retrieve_notes` 工具被 agent 自主调用（trace 里出 `Action: retrieve_notes`）。
 
-### 11.5 AgentService 第二期 2b-ii：AgentTrace 面板（计划已定，2b-i 完成后开工）
+### 11.5 AgentService 第二期 2b-ii：AgentTrace 面板 - ✅ 完成（2026-07-22）
 
 **目标**：把当前 ReAct 多步思考 + Action + Observation 直接堆在 `Message.thinking` 字段、复用 `ThinkingBlock` 渲染的简陋做法，升级为独立的 `<AgentTrace>` 组件——按 step 卡片化展示 thought / action / observation 三段，为后续检索结果（retrieved chunks）留展示槽位。同时把 SSE 协议从"扁平事件流"升级为"step-bounded 事件流"，让前端能按 step 渲染而非靠 `--- 第 N 步思考 ---` 文本分隔。
 
@@ -573,10 +574,154 @@ My_Agent/
 
 - Agent 模式下强制 Thinking，不可关闭 Thinking。
 
-### 11.7 第三期前瞻（不在本期范围）
+### 11.7 第三期前瞻
 
+以下为第三期规划，**前两项已在第一轮完成**（详见 11.8）：
+
+- ~~完善 skills 模块，支持以 .md 文件形式导入技能。~~ ✅ 完成（第一轮，2026-07-30）
+- ~~先使用 LangChain 内部支持的联网搜索功能，如 DuckDuckGo search。~~ ✅ 完成（第一轮，2026-07-30）
 - 厂商原生 tool-calling API 接入（OpenAI `tool_calls` delta、Anthropic `tools` 参数）：替换 ReAct prompt 注入。
 - 异步化文档处理（上传文档后立即返回 doc_id，后台 chunking embedding）。
 - 混合检索（BM25 + 向量 ensemble）。
 - 知识库 RAG over PDF/DOCX 放开。
-- 完善 skills 模块，支持以 .md 文件形式导入技能。
+- Skills 管理 UI（上传/编辑 .md 技能，目前走文件系统 + 热重载 API）。
+
+### 11.8 第三期第一轮：Markdown 技能 + 联网搜索 + Agent 交错输出 - ✅ 完成（2026-07-30）
+
+落地 §11.7 第三期前两项，并迭代修复实测反馈的 Agent 输出渲染问题。
+
+#### 11.8.1 Markdown 技能导入（.md 文件定义技能）
+
+`.md` 文件放 `backend/skills_md/`，YAML frontmatter 提供 `name`/`description`（缺省回退文件名 / 首个 `#` 标题），正文作 system prompt。Agent 调用时 skill 用其 markdown 正文做单轮 LLM 调用。
+
+| 类型 | 路径                                                   | 说明                                                                                                                                    |
+| ---- | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| 新   | `backend/app/skills/markdown_skill.py`               | `MarkdownSkill` 类（Skill 协议，`_chat_model` 由 `_wrap_skill_as_tool` 注入）+ `parse_markdown_skill()` frontmatter 解析        |
+| 新   | `backend/skills_md/translator.md`、`summarizer.md` | 两个示例技能                                                                                                                            |
+| 改   | `backend/app/skills/registry.py`                     | `discover_markdown_skills()` / `reload_markdown_skills()`；`_MARKDOWN_SKILL_NAMES` 跟踪来源；`list_skills()` 加 `source` 字段 |
+| 改   | `backend/app/config.py`                              | `skills_md_dir="skills_md"`                                                                                                           |
+| 改   | `backend/main.py`                                    | lifespan 启动扫描`skills_md/`                                                                                                         |
+| 改   | `backend/app/routers/skills.py`                      | `POST /api/skills/reload` 热重载（静态路由须在 `/{skill_name}` 之前）                                                               |
+| 改   | `backend/app/services/agent_service.py`              | `_build_chat_model` 提前到 `_select_tools` 前；`_wrap_skill_as_tool` 注入 chat_model                                              |
+| 新   | `backend/tests/test_markdown_skills.py`              | 9 用例                                                                                                                                  |
+
+#### 11.8.2 DuckDuckGo 联网搜索 skill
+
+| 类型 | 路径                                                | 说明                                                                                    |
+| ---- | --------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| 新   | `backend/app/skills/web_search.py`                | `WebSearchSkill`，引号剥离 + `auto`/`html`/`lite` 三后端重试 + 限流兜底错误信息 |
+| 改   | `backend/app/skills/registry.py`、`__init__.py` | 注册`web_search`                                                                      |
+| 新   | `backend/tests/test_web_search_skill.py`          | 10 用例                                                                                 |
+| 改   | `backend/pyproject.toml`                          | 加`duckduckgo-search>=8.0` + `pyyaml>=6.0`                                          |
+
+#### 11.8.3 Agent 每步输出可见 + 交错渲染
+
+**问题**：每步推理输出埋在折叠推理块内，未作为正文渲染；web_search 总"无返回结果"。
+
+**根因**：①每步 `text` 只进 AgentTrace 卡片，仅最终答案提升为正文；②模型伪造 Observation（忽略真实结果）；③`Action Input` 带引号触发精确匹配；④DuckDuckGo 限流返空。
+
+| 类型 | 路径                                              | 说明                                                                                                                                                                                             |
+| ---- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 改   | `backend/app/services/prompts/react_system.txt` | 每步以`说明:` 开头（面向用户一句话）；明确"写完 Action Input 必须停，绝不自己写 Observation"；最终步也先 `说明:` 再 Final Answer                                                             |
+| 改   | `backend/app/services/agent_service.py`         | `_extract_narration()` 解析 `说明:`；`_truncate_after_action_input()` 截断伪造 Observation；`_extract_final_answer()` 兼容全角冒号；每步发 `narration` SSE 事件并存 `step.narration` |
+| 改   | `frontend/src/types/index.ts`                   | `ChatChunk.type` 加 `narration`；`AgentStep` 加 `narration`                                                                                                                              |
+| 改   | `frontend/src/api/agent-chat.ts`                | `onNarration` 回调                                                                                                                                                                             |
+| 改   | `frontend/src/store/workspaceStore.ts`          | `setAgentStepNarration`（存到 step，不堆进 content）                                                                                                                                           |
+| 改   | `frontend/src/hooks/useChatStream.ts`           | `onNarration` -> `setAgentStepNarration`                                                                                                                                                     |
+| 新   | `frontend/src/components/MarkdownContent.tsx`   | 共享 markdown 渲染器，narration 与最终答案同样式                                                                                                                                                 |
+| 重写 | `frontend/src/components/AgentTrace.tsx`        | 交错渲染：每步可折叠推理卡片（`说明:` 行剔除）+ 卡片下方 narration 作**正文**（始终可见）                                                                                                |
+| 改   | `frontend/src/components/MessageItem.tsx`       | 最终答案改用 MarkdownContent                                                                                                                                                                     |
+| 改   | `backend/tests/test_agent_service_v2.py`        | +9 单元 + 2 集成用例                                                                                                                                                                             |
+
+**渲染结构**：推理与输出逐步交替--`[可折叠推理卡片]` + `[正文输出 narration]`，每步一组，最终答案在末尾作正文。
+
+#### 11.8.4 验证
+
+- 后端 `uv run pytest -q` -> **118 passed**（原 88 + web_search 10 + markdown 9 + agent narration/truncation 11）。
+- 前端 `tsc --noEmit` + `build` + `lint` 全过（仅 1 个预先存在的 `useConversation.ts` 警告）。
+
+#### 11.8.5 已知限制
+
+- **DuckDuckGo 限流**：服务端反爬，同 IP 短时间多次请求后静默返空；重试逻辑兜底，被限流时错误信息引导改用英文关键词。长期若需更稳定可换需 API key 的搜索服务。
+- **`duckduckgo_search` 改名 `ddgs`**：8.1.1 仍可用（RuntimeWarning 已抑制）；未来可切 `ddgs` 包。
+- **Skills 管理 UI 未做**：ChatHeader「Skills」按钮仍 disabled；管理走文件系统 + 热重载 API。
+- **每步输出依赖模型遵守提示词**：若模型不输出 `说明:` 则该步无正文输出（优雅降级）。
+
+## 11.9 第三期第二轮：Skills 管理 UI + 联网搜索切换到 Tavily（计划已定，待开工）
+
+落地 Skills 管理 UI（前端弹窗管理 .md 技能），同时将联网搜索从 DuckDuckGo 切换到 Tavily（解决 DDG 限流问题），并移除 `duckduckgo-search` 依赖。
+
+### 11.9.1 Skills 管理 UI
+
+**目标**：ChatHeader 现有 disabled 的「Skills」按钮接入弹窗，可在 UI 内新建/编辑/删除 markdown 技能（.md 文件），Python 技能只读展示。当前管理走文件系统 + `POST /api/skills/reload`，无 UI。
+
+**后端**：`routers/skills.py` 新增 .md 技能文件 CRUD（文件即数据源，写文件后 reload 注册表）。
+
+| 类型 | 路径                               | 说明                                                                                                                                 |
+| ---- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| 改   | `backend/app/routers/skills.py`  | 新增 4 端点（见下）；静态路由`md` 前缀必须在 `/{skill_name}` 之前声明（同 reload 的坑）                                          |
+| 改   | `backend/app/skills/registry.py` | 新增`get_markdown_skill_source(name)` 返回解析后的 `{name, description, content}`；`delete_markdown_skill(name)` 删文件 + 注销 |
+
+新增端点（声明顺序：`reload` → `md/*` → `{skill_name}`）：
+
+| 方法   | 路径                      | 说明                                                                                                                       |
+| ------ | ------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/skills/md/{name}` | 取某 markdown 技能的解析内容（name/description/content），供编辑表单回填；非 md 技能或不存在返 404                         |
+| POST   | `/api/skills/md`        | 新建：body`{name, description, content}` -> 组装 frontmatter+正文写 `skills_md/{name}.md` -> reload；重名/非法名返 400 |
+| PUT    | `/api/skills/md/{name}` | 更新：body`{description?, content}` -> 重写文件 -> reload                                                                |
+| DELETE | `/api/skills/md/{name}` | 删除 .md 文件 -> reload；Python 技能返 400                                                                                 |
+
+**安全校验**：skill name 仅允许 `[a-zA-Z0-9_-]`，禁 `..`/`/`（防路径穿越）；重名（与 Python 或现有 md 技能冲突）返 400。
+
+**前端**：mirror `KnowledgeBaseManager.tsx` / `ModelManager.tsx` 模式。
+
+| 类型 | 路径                                          | 说明                                                                                                                                                                                                                                                  |
+| ---- | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 新   | `frontend/src/api/skills.ts`                | API 客户端：`fetchSkills()`(GET)、`fetchMarkdownSkill(name)`(GET md)、`createMarkdownSkill`/`updateMarkdownSkill`/`deleteMarkdownSkill`、`reloadSkills()`；JSON 走 `apiFetch`（无 multipart）                                           |
+| 新   | `frontend/src/components/SkillsManager.tsx` | Modal 弹窗：列表视图（全部技能 + source 徽标「Python/MD」）→ 选中 md 技能进编辑视图（name 只读/可建、description、content textarea）→ 新建按钮；Python 技能只读不可编辑/删除；删除二次确认（nested overlay 内联样式，同 KBM 的 Tailwind v4 坑规避） |
+| 改   | `frontend/src/components/ChatHeader.tsx`    | 「Skills」按钮去掉`disabled`，`onClick` 开 `SkillsManager`；加 `skillsManagerOpen` state                                                                                                                                                      |
+| 改   | `frontend/src/types/index.ts`               | 新增`SkillManifestItem`（name/description/source）、`MarkdownSkillSource`（name/description/content）类型                                                                                                                                         |
+
+**交互细节**：
+
+- 列表展示 name + description + source 徽标；md 技能点击进编辑，Python 技能点击无操作（或展开只读 description）。
+- 新建表单：name（创建时可填，保存后不可改）、description、content（技能指令正文，textarea + monospace）。
+- 保存后调 reload 端点刷新注册表，列表同步刷新。
+- 无需全局 store 状态（技能不参与 chat 选择，manager 打开时按需 fetch，同 KBM 的 `loadKbs`）。
+
+**测试**：
+
+| 路径                                                       | 用例                                                                                                                                                                        |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `backend/tests/test_skills.py`（扩）                     | md CRUD 端到端：新建→列表含、取源→字段匹配、更新→reload 后 description 变、删除→列表不含、Python 技能不可删（400）、重名（400）、非法 name（400）、路径穿越 name（400） |
+| `frontend/tests/components/SkillsManager.test.tsx`（新） | 列表渲染 + source 徽标、新建技能、编辑回填、删除确认（mirror KBM 测试）                                                                                                     |
+
+### 11.9.2 联网搜索切换到 Tavily
+
+**目标**：`web_search` skill 从 DuckDuckGo 切到 Tavily，解决 DDG 限流导致"无返回结果"的稳定性问题。Tavily 面向 AI agent 设计，结果质量高、无 DDG 式静默限流（需 API key，有免费额度）。
+
+**依赖选型**：用官方 `tavily-python` SDK（`AsyncTavilyClient`）而非 httpx 直连。理由：skill 层不受 adapter"单 LLM 客户端栈"约束；SDK 是薄壳不过度封装；`AsyncTavilyClient` 天然适配 async `run()`，省掉自己管 `httpx.AsyncClient` 生命周期的样板；内置超时/限流/key 异常类型。SDK 底层仍依赖 `httpx`（项目已有），传递依赖增量极小。
+
+| 类型 | 路径                                         | 说明                                                                                                                                                                                                                                          |
+| ---- | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 改   | `backend/pyproject.toml`                   | 删`duckduckgo-search>=8.0,<9`；加`tavily-python>=0.5,<1`；`uv lock` 同步（移除 `primp` 等 DDG 传递依赖，纳入 tavily 依赖）                                                                                                          |
+| 改   | `backend/app/config.py` + `.env.example` | 新增`tavily_api_key: str = ""`（base_url 由 SDK 内部管理，无需配置）                                                                                                                                                                       |
+| 重写 | `backend/app/skills/web_search.py`         | `WebSearchSkill.run()` 改用 `AsyncTavilyClient(api_key).search(query, max_results=N, search_depth="basic")`（async 原生，无需 `to_thread`/`asyncio` 包装）；剥离首尾引号保留；空 key 返错误提示「未配置 TAVILY_API_KEY」；SDK 异常/网络错误返错误形态不抛 |
+| 改   | `backend/tests/test_web_search_skill.py`   | mock `AsyncTavilyClient.search`（patch `tavily.AsyncTavilyClient`）替换原 `_search_sync` mock；断言 search 调用参数含 query/max_results、响应解析 title/url/content、空 key 报错、SDK 异常兜底；去掉 `_RETRY_DELAYS`/多后端重试相关用例（Tavily 无 DDG 式静默限流） |
+
+**结果格式映射**：Tavily 返回 `{"results":[{"title","url","content"}], "answer":?}` -> 映射为与旧版一致的 `metadata.results`（title/url/snippet）+ `output` markdown 列表，保持前端/agent 侧无感。可选透传 `answer` 字段到 `metadata`。
+
+**description 更新**：去掉 DDG/限流提示，改为「Search the web via Tavily and return the top results...」。
+
+### 11.9.3 验证
+
+- 后端 `uv run pytest -q` -> 118 ± 增减（web_search 测试改写 + skills CRUD 新增约 +8）。
+- 前端 `tsc --noEmit` + `build` + `lint` 全过。
+- 手动 E2E：(1) Skills 弹窗新建一个 translator.md -> 列表出现 -> Agent 模式可调用；(2) 编辑内容 -> reload 生效；(3) 删除 -> 列表消失；(4) web_search 真实调用 Tavily 返回结果（需配 `TAVILY_API_KEY`）。
+
+### 11.9.4 已知限制
+
+- **Tavily 需 API key**：免费额度有限（每月 ~1000 次）；未配置 key 时 web_search 返错误提示，不崩。`.env` 加 `TAVILY_API_KEY`。
+- **Python 技能不可编辑**：UI 仅管理 .md 技能；echo/current_time/web_search 为内置只读。
+- **无技能启停**：所有注册技能始终对 Agent 可用（`enable_skills` 白名单已支持过滤，但 UI 不做勾选）。
+- **历史 .md 技能**：`skills_md/` 现有 translator.md/summarizer.md 在 UI 中正常展示可编辑。

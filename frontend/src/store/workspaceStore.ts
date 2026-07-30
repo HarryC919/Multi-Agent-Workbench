@@ -97,6 +97,9 @@ interface WorkspaceState {
   setAgentStepAction: (name: string, input: string) => void
   setAgentStepObservation: (name: string, content: string) => void
   setAgentStepRetrieved: (docs: RetrievedChunkDoc[]) => void
+  // Phase 3: per-step narration (说明:), stored on the step so the frontend
+  // can render it interleaved with the step's trace.
+  setAgentStepNarration: (text: string) => void
   completeAgentStep: (step: number, finish: string) => void
   setAssistantStatus: (status: Message['status']) => void
   setStreaming: (streaming: boolean) => void
@@ -300,6 +303,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             observation: null,
             retrieved: null,
             finish: null,
+            narration: null,
           })
           lastMessage.metadata = { ...meta, agent: true, steps }
           return {
@@ -335,6 +339,12 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       setAgentStepRetrieved: (docs) => {
         mutateLastStep(api, (s) => {
           s.retrieved = docs
+        })
+      },
+
+      setAgentStepNarration: (text) => {
+        mutateLastStep(api, (s) => {
+          s.narration = text
         })
       },
 

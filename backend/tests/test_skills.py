@@ -9,9 +9,11 @@ def test_list_skills_includes_echo_and_current_time():
     assert resp.status_code == 200
     body = resp.json()
     names = {item["name"] for item in body["skills"]}
-    assert {"echo", "current_time"}.issubset(names)
+    assert {"echo", "current_time", "web_search"}.issubset(names)
     for item in body["skills"]:
         assert item["description"]
+        assert "source" in item
+        assert item["source"] in ("python", "markdown")
 
 
 def test_invoke_echo_returns_input_verbatim():

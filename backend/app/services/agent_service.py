@@ -63,7 +63,8 @@ except FileNotFoundError:  # pragma: no cover — repo integrity issue
         "followed by the answer when done."
     )
 
-_FINAL_ANSWER_PREFIX = "Final Answer:"
+# Final Answer marker is defined in the parsing section (_FINAL_ANSWER_PREFIXES);
+# kept here as a single-string alias for the direct-answer path's existence check.
 _NO_TOOL_OBSERVATION = "Observation: 无可用工具，请基于已知信息继续推理。"
 # Used when no tools are armed (no KB selected + no registered skills): skip
 # the ReAct loop and answer directly. Running Thought/Action with an empty
@@ -83,13 +84,16 @@ class _ToolInput(BaseModel):
     input: str = Field(..., description="The argument string to pass to the skill")
 
 
-def _wrap_skill_as_tool(skill: Skill) -> StructuredTool:
+def _wrap_skill_as_tool(skill: Skill, chat_model: Any = None) -> StructuredTool:
     """Adapt a Skill to LangChain's `BaseTool` interface.
 
     The wrapper is a thin closure — the action simply awaits
     `skill.run(input=..., args={})` and surfaces the result. Errors are
     returned as `{"error": ...}` inside `output` rather than raised, so the
     ReAct loop can carry on with a recoverable observation.
+
+    If ``chat_model`` is provided and the skill is a ``MarkdownSkill``, the
+    chat model is injected before wrapping so the skill can make LLM calls.
     """
 
     async def _arun(input: str, **_: Any) -> str:
@@ -114,6 +118,13 @@ def _wrap_skill_as_tool(skill: Skill) -> StructuredTool:
         except RuntimeError:
             return ""
 
+    # Phase 3: if the skill is a MarkdownSkill, inject the chat model
+    # so it can make LLM calls with its markdown instructions as the
+    # system prompt. The injection is done before wrapping so the
+    # _arun closure can call skill.run() which will use the model.
+    if chat_model is not None and hasattr(skill, "set_chat_model"):
+        skill.set_chat_model(chat_model)  # type: ignore[union-attr]
+
     tool = StructuredTool.from_function(
         name=skill.name,
         description=skill.description,
@@ -131,6 +142,11 @@ def _wrap_skill_as_tool(skill: Skill) -> StructuredTool:
 
 _ACTION_RE = re.compile(r"Action\s*:\s*(.+?)(?:\n|$)", re.IGNORECASE)
 _ACTION_INPUT_RE = re.compile(r"Action\s*Input\s*:\s*(.+?)(?:\n|$)", re.IGNORECASE)
+# Phase 3: narration line (说明:) - user-facing one-liner per step, lifted to
+# the main chat body rather than buried in the AgentTrace card.
+_NARRATION_RE = re.compile(r"说明\s*[:：]\s*(.+?)(?:\n|$)")
+# Final Answer marker, also accept Chinese colon variants.
+_FINAL_ANSWER_PREFIXES = ("Final Answer:", "Final Answer：")
 
 
 def _parse_action(step_content: str) -> tuple[str | None, str]:
@@ -148,12 +164,45 @@ def _parse_action(step_content: str) -> tuple[str | None, str]:
     return name, action_input
 
 
-def _extract_final_answer(step_content: str) -> str | None:
-    idx = step_content.find(_FINAL_ANSWER_PREFIX)
-    if idx < 0:
+def _extract_narration(step_content: str) -> str | None:
+    """Extract the user-facing `说明:` one-liner from a ReAct step.
+
+    Returns the narration text (stripped), or ``None`` when absent. Only the
+    first match is taken - one narration line per step.
+    """
+    m = _NARRATION_RE.search(step_content)
+    if not m:
         return None
-    tail = step_content[idx + len(_FINAL_ANSWER_PREFIX) :]
-    return tail.lstrip("\n").strip()
+    return m.group(1).strip() or None
+
+
+def _truncate_after_action_input(step_content: str) -> str:
+    """Strip everything after the `Action Input:` line.
+
+    Models sometimes fabricate an `Observation:` after `Action Input:`,
+    which pollutes the ReAct transcript and makes them reason over their own
+    hallucinated tool output instead of the real one. Truncating here keeps
+    only `说明:` / `Thought:` / `Action:` / `Action Input:` in the assistant
+    turn; the real Observation is appended as the next HumanMessage by the
+    caller. Steps ending in `Final Answer:` are returned unchanged.
+    """
+    # Don't truncate final-answer steps (they have no Action Input to follow).
+    if _extract_final_answer(step_content) is not None:
+        return step_content
+    m = _ACTION_INPUT_RE.search(step_content)
+    if not m:
+        return step_content
+    # Keep up to and including the Action Input line's trailing newline.
+    return step_content[: m.end()]
+
+
+def _extract_final_answer(step_content: str) -> str | None:
+    for prefix in _FINAL_ANSWER_PREFIXES:
+        idx = step_content.find(prefix)
+        if idx >= 0:
+            tail = step_content[idx + len(prefix) :]
+            return tail.lstrip("\n").strip()
+    return None
 
 
 # --------------------------------------------------------------------- service
@@ -181,9 +230,14 @@ class AgentService:
         """
         max_steps = max(1, int(request.max_steps or settings.agent_max_steps))
 
+        # Build chat model EARLY (before _select_tools) so markdown skills
+        # can receive it during wrapping. The chat model is also used in the
+        # direct-answer path below when no tools are armed.
+        chat_model = self._build_chat_model(adapter, request)
+
         # Tools available for this turn; filtered by request.enable_skills
         # (None ⇒ all registered; explicit list acts as a whitelist).
-        tools = self._select_tools(skills, request.enable_skills)
+        tools = self._select_tools(skills, request.enable_skills, chat_model)
         system_prompt = self._build_system_prompt(tools)
 
         messages: list[BaseMessage] = self._build_initial_messages(request, system_prompt)
@@ -196,9 +250,6 @@ class AgentService:
         # like the frontend `AgentStep` interface (snake_case on the wire).
         steps: list[dict[str, Any]] = []
         current_step: dict[str, Any] | None = None
-
-        # Wrap adapter as a LangChain chat model and bind the step temperature.
-        chat_model = self._build_chat_model(adapter, request)
 
         # Placeholder assistant message so the user sees a streaming row
         # immediately; we update its fields on finish/error.
@@ -249,6 +300,7 @@ class AgentService:
                 "observation": None,
                 "retrieved": None,
                 "finish": None,
+                "narration": None,
             }
             steps.append(current_step)
             yield _sse({"type": "step_start", "step": 1, "label": "第 1 步"})
@@ -332,6 +384,7 @@ class AgentService:
                     "observation": None,
                     "retrieved": None,
                     "finish": None,
+                    "narration": None,
                 }
                 steps.append(current_step)
                 yield _sse(
@@ -409,6 +462,19 @@ class AgentService:
                     yield _sse({"type": "step_end", "step": step_number, "finish": "empty"})
                     break
 
+                # Phase 3: extract the user-facing `说明:` narration line and
+                # lift it to the main chat body (台前) via a `narration` SSE
+                # event. This is the per-step output the user sees in the reply
+                # area, distinct from the Thought/Action details that stay in
+                # the AgentTrace card. The narration is also stashed on the
+                # step transcript so the frontend can render it interleaved
+                # with each step's trace (rather than dumping all narrations at
+                # the bottom of one collapsed block).
+                narration = _extract_narration(step_content)
+                if narration:
+                    current_step["narration"] = narration
+                    yield _sse({"type": "narration", "content": narration, "step": step_number})
+
                 # Final Answer?
                 final_text = _extract_final_answer(step_content)
                 if final_text is not None:
@@ -459,7 +525,7 @@ class AgentService:
 
                 # Feed this step back as the assistant turn + observation as
                 # the next user turn — preserves the ReAct transcript.
-                messages.append(AIMessage(content=step_content))
+                messages.append(AIMessage(content=_truncate_after_action_input(step_content)))
                 messages.append(HumanMessage(content=observation))
 
                 if step_count >= max_steps:
@@ -511,12 +577,15 @@ class AgentService:
 
     # ------------------------------------------------------------------ helpers
 
-    def _select_tools(self, skills: list[Skill] | None, enable: list[str] | None) -> list:
+    def _select_tools(self, skills: list[Skill] | None, enable: list[str] | None, chat_model: Any = None) -> list:
         """Whitelist filter, never raises on unknown skill names.
 
         Returns a list of wrapped LangChain ``StructuredTool`` objects —
         never raw ``Skill`` instances — so the agent loop can call
         ``tool.ainvoke({...})`` uniformly.
+
+        If ``chat_model`` is provided, it is forwarded to ``_wrap_skill_as_tool``
+        so MarkdownSkill instances can receive it and make LLM calls.
         """
         if not skills:
             return []
@@ -525,7 +594,7 @@ class AgentService:
         else:
             enable_set = {n for n in enable}
             filtered = [s for s in skills if s.name in enable_set and self._is_callable(s)]
-        return [_wrap_skill_as_tool(s) for s in filtered]
+        return [_wrap_skill_as_tool(s, chat_model) for s in filtered]
 
     @staticmethod
     def _is_callable(skill: Skill) -> bool:

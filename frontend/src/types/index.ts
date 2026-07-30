@@ -87,6 +87,8 @@ export interface ChatChunk {
     | 'step_start'
     | 'step_end'
     | 'retrieved'
+    // Phase 3: per-step user-facing narration lifted to the main chat body.
+    | 'narration'
   content?: string
   finishReason?: string
   message?: string
@@ -127,6 +129,9 @@ export interface AgentStep {
   observation: AgentStepObservation | null
   retrieved: RetrievedChunkDoc[] | null
   finish: string | null
+  // Phase 3: per-step user-facing narration (说明:), rendered interleaved
+  // with each step's trace instead of dumped at the bottom.
+  narration?: string | null
 }
 
 export interface UploadFileResponse {

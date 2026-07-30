@@ -120,6 +120,13 @@ export function useChatStream(): UseChatStreamReturn {
           onObservation: (name, content) => {
             store.setAgentStepObservation(name, content)
           },
+          onNarration: (text) => {
+            // Phase 3: store the per-step `说明:` narration on the current
+            // step so it renders interleaved with the step's trace (right
+            // below that step's reasoning card), rather than dumping all
+            // narrations into one block at the bottom.
+            store.setAgentStepNarration(text)
+          },
           onRetrieved: (_step, docs) => {
             store.setAgentStepRetrieved(docs)
           },

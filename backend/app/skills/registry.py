@@ -4,15 +4,24 @@ Submodules of ``app.skills`` expose a module-level ``SKILL`` attribute that
 implements :class:`app.skills.base.Skill`. Importing this registry module
 loads them once and indexes them by ``name``.
 
-Keeping process-local state here mirrors the "layer-A placeholder; deep
-agent tool integration comes later" decision in the development plan.
+Phase 3: markdown-defined skills (.md files in ``skills_md/``) are also
+registered here via ``discover_markdown_skills()``. Their source is tracked
+separately so ``reload_markdown_skills()`` can clear and re-import them
+without affecting Python-defined skills.
 """
 from __future__ import annotations
 
+import logging
+from pathlib import Path
+
 from app.skills.base import Skill, SkillResult
-from app.skills import echo, current_time
+from app.skills import echo, current_time, web_search
+
+logger = logging.getLogger(__name__)
 
 _REGISTRY: dict[str, Skill] = {}
+# Track which skill names came from .md files so reload can selectively remove them.
+_MARKDOWN_SKILL_NAMES: set[str] = set()
 
 
 def _register(skill: Skill) -> None:
@@ -23,11 +32,20 @@ def _register(skill: Skill) -> None:
 
 _register(echo.SKILL)  # type: ignore[arg-type]
 _register(current_time.SKILL)  # type: ignore[arg-type]
+_register(web_search.SKILL)  # type: ignore[arg-type]
 
 
 def list_skills() -> list[dict[str, str]]:
-    """Return a JSON-serializable manifest of registered skills."""
-    return [{"name": s.name, "description": s.description} for s in _REGISTRY.values()]
+    """Return a JSON-serializable manifest of registered skills.
+
+    Each entry includes a ``source`` field: ``"python"`` for skills defined
+    in .py modules, ``"markdown"`` for skills loaded from .md files.
+    """
+    results: list[dict[str, str]] = []
+    for name, skill in _REGISTRY.items():
+        source = "markdown" if name in _MARKDOWN_SKILL_NAMES else "python"
+        results.append({"name": name, "description": skill.description, "source": source})
+    return results
 
 
 def get_skill(name: str) -> Skill | None:
@@ -44,4 +62,62 @@ def iter_skills() -> list[Skill]:
     return list(_REGISTRY.values())
 
 
-__all__ = ["list_skills", "get_skill", "iter_skills", "SkillResult"]
+# ----------------------------------------------------------- markdown skills
+
+
+def discover_markdown_skills(skills_dir: Path) -> list[Skill]:
+    """Scan ``skills_dir`` for .md files and register them as MarkdownSkill instances.
+
+    Files with duplicate names (already in ``_REGISTRY``) are skipped with a
+    warning. Returns the list of newly registered skills.
+    """
+    from app.skills.markdown_skill import parse_markdown_skill
+
+    if not skills_dir.is_dir():
+        logger.info("Markdown skills directory does not exist: %s", skills_dir)
+        return []
+
+    registered: list[Skill] = []
+    for filepath in sorted(skills_dir.glob("*.md")):
+        skill = parse_markdown_skill(filepath)
+        if skill is None:
+            continue
+
+        if skill.name in _REGISTRY:
+            logger.warning(
+                "Skipping markdown skill %r from %s: name already registered",
+                skill.name,
+                filepath.name,
+            )
+            continue
+
+        _register(skill)
+        _MARKDOWN_SKILL_NAMES.add(skill.name)
+        registered.append(skill)
+        logger.info("Registered markdown skill %r from %s", skill.name, filepath.name)
+
+    return registered
+
+
+def reload_markdown_skills(skills_dir: Path) -> int:
+    """Clear previously loaded markdown skills and re-scan the directory.
+
+    Returns the number of skills reloaded.
+    """
+    # Remove markdown-sourced skills from the registry.
+    for name in list(_MARKDOWN_SKILL_NAMES):
+        _REGISTRY.pop(name, None)
+    _MARKDOWN_SKILL_NAMES.clear()
+
+    new_skills = discover_markdown_skills(skills_dir)
+    return len(new_skills)
+
+
+__all__ = [
+    "list_skills",
+    "get_skill",
+    "iter_skills",
+    "discover_markdown_skills",
+    "reload_markdown_skills",
+    "SkillResult",
+]
