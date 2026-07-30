@@ -98,3 +98,128 @@
 - 代码实现与开发计划不一致
 
 如果发现文档过时，应优先更新文档。
+
+---
+
+## Git 提交规范
+
+### Commit 原则
+
+每次 commit 应满足：
+
+- 一个 commit 尽量只包含一个逻辑变更
+- commit message 必须清晰描述修改内容
+- 禁止使用无意义描述：
+  - update
+  - fix
+  - change
+  - modify
+  - test
+
+---
+
+### Commit Message 格式
+
+采用 Conventional Commits 格式：
+
+type 类型：
+
+| 类型 | 使用场景 |
+| - | --- |
+| feat | 新功能 |
+| debug | Bug 修复 |
+| refactor | 重构，不改变功能 |
+| docs | 文档修改 |
+| test | 测试相关 |
+| perf | 性能优化 |
+| build | 构建系统或依赖修改 |
+| chore | 其他维护修改 |
+
+示例：
+
+feat: add vector database retrieval module
+
+fix: resolve agent memory persistence issue
+
+refactor: simplify tool calling architecture
+
+docs: update development progress
+
+---
+
+### Commit 前检查清单
+
+提交代码前必须检查：
+
+#### 1. 修改范围
+
+确认：
+
+- [ ] 修改内容符合当前任务目标
+- [ ] 没有包含无关修改
+- [ ] 没有删除未确认的重要代码
+- [ ] 没有提交临时文件
+
+#### 2. 代码质量
+
+确认：
+
+- [ ] 代码可以正常运行
+- [ ] 新增功能已有基本验证
+- [ ] 没有明显 debug 输出
+- [ ] 没有硬编码敏感信息
+
+#### 3. 测试检查
+
+如果项目存在测试：
+
+- [ ] 已运行相关测试
+- [ ] 测试结果通过
+- [ ] 新功能添加必要测试
+
+如果无法运行测试：
+
+必须说明原因。
+
+#### 4. 文档同步
+
+如果修改涉及：
+
+- 架构变化
+- 新功能
+- API变化
+- 开发计划任务
+
+必须同步更新：
+
+- `@PROGRESS.md`
+- `@DEVELOPMENT_PLAN.md`
+
+#### 5. Git 状态检查
+
+提交前执行：
+
+```bash
+git status
+git diff
+
+确认：
+
+ 只提交预期文件
+ 没有敏感信息
+ 没有大体积文件
+ 没有 IDE 配置垃圾文件
+Commit 行为约束
+
+Agent 不允许：
+
+未检查 diff 直接 commit
+未运行验证直接声明完成
+将多个无关任务合并到一个 commit
+自动 push 到远程仓库
+
+除非用户明确要求，否则：
+
+只创建 commit
+不执行 push
+不修改 Git 历史记录（rebase/reset 等）
