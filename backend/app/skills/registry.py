@@ -113,11 +113,48 @@ def reload_markdown_skills(skills_dir: Path) -> int:
     return len(new_skills)
 
 
+def get_markdown_skill_source(name: str, skills_dir: Path) -> dict | None:
+    """Read and parse a markdown skill's source file.
+
+    Returns ``{name, description, content}`` (content = instruction body
+    without frontmatter), or ``None`` if the .md file does not exist.
+    Used by the Skills Manager edit endpoint to pre-fill the form.
+    """
+    from app.skills.markdown_skill import parse_markdown_skill
+
+    filepath = skills_dir / f"{name}.md"
+    if not filepath.is_file():
+        return None
+    skill = parse_markdown_skill(filepath)
+    if skill is None:
+        return None
+    return {"name": skill.name, "description": skill.description, "content": skill.instructions}
+
+
+def delete_markdown_skill(name: str, skills_dir: Path) -> bool:
+    """Delete a markdown skill's .md file and unregister it.
+
+    Returns ``True`` if the file was deleted, ``False`` if it didn't exist.
+    The in-memory registry entry is removed regardless (best-effort).
+    """
+    filepath = skills_dir / f"{name}.md"
+    deleted = False
+    if filepath.is_file():
+        filepath.unlink()
+        deleted = True
+    # Remove from the in-memory registry if present.
+    _REGISTRY.pop(name, None)
+    _MARKDOWN_SKILL_NAMES.discard(name)
+    return deleted
+
+
 __all__ = [
     "list_skills",
     "get_skill",
     "iter_skills",
     "discover_markdown_skills",
     "reload_markdown_skills",
+    "get_markdown_skill_source",
+    "delete_markdown_skill",
     "SkillResult",
 ]

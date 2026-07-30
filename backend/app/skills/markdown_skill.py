@@ -145,4 +145,19 @@ def parse_markdown_skill(filepath: Path) -> MarkdownSkill | None:
     return MarkdownSkill(name=name, description=description or "", instructions=instructions)
 
 
-__all__ = ["MarkdownSkill", "parse_markdown_skill"]
+def assemble_markdown_skill(name: str, description: str, content: str) -> str:
+    """Assemble a .md skill file's raw text from structured fields.
+
+    Inverse of ``parse_markdown_skill``: writes YAML frontmatter (name +
+    description) followed by the instruction body. Used by the Skills Manager
+    CRUD endpoints to (re)write .md files.
+    """
+    import yaml
+
+    frontmatter = {"name": name, "description": description}
+    fm_text = yaml.safe_dump(frontmatter, allow_unicode=True, sort_keys=False).strip()
+    body = content.strip()
+    return f"---\n{fm_text}\n---\n\n{body}\n"
+
+
+__all__ = ["MarkdownSkill", "parse_markdown_skill", "assemble_markdown_skill"]

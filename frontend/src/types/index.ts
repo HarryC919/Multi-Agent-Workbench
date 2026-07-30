@@ -172,3 +172,19 @@ export interface RetrievedChunk {
   chunkText: string
   score: number
 }
+
+// ---------------------------------------------------------------------------
+// Phase 3 round 2 - Skills management types.
+// ---------------------------------------------------------------------------
+
+export interface SkillManifestItem {
+  name: string
+  description: string
+  source: 'python' | 'markdown'
+}
+
+export interface MarkdownSkillSource {
+  name: string
+  description: string
+  content: string
+}

@@ -3,6 +3,7 @@ import { Database, Settings2, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ModelManager } from './ModelManager'
 import { KnowledgeBaseManager } from './KnowledgeBaseManager'
+import { SkillsManager } from './SkillsManager'
 import { useWorkspaceStore } from '@/store/workspaceStore'
 import type { ModelConfig } from '@/types'
 
@@ -16,6 +17,7 @@ interface ChatHeaderProps {
 export function ChatHeader({ title, models = [], selectedModel, onModelChange }: ChatHeaderProps) {
   const [managerOpen, setManagerOpen] = useState(false)
   const [kbManagerOpen, setKbManagerOpen] = useState(false)
+  const [skillsManagerOpen, setSkillsManagerOpen] = useState(false)
   // Read KB state directly from the store so the dropdown stays in sync with
   // selection changes made elsewhere (and avoids prop-drilling through
   // WorkspaceLayout).
@@ -45,7 +47,7 @@ export function ChatHeader({ title, models = [], selectedModel, onModelChange }:
             </option>
           ))}
         </select>
-        <Button variant="outline" size="sm" disabled>
+        <Button variant="outline" size="sm" onClick={() => setSkillsManagerOpen(true)}>
           <Sparkles className="mr-1 h-4 w-4" />
           Skills
         </Button>
@@ -67,6 +69,7 @@ export function ChatHeader({ title, models = [], selectedModel, onModelChange }:
       </div>
       <ModelManager open={managerOpen} onClose={() => setManagerOpen(false)} />
       <KnowledgeBaseManager open={kbManagerOpen} onClose={() => setKbManagerOpen(false)} />
+      <SkillsManager open={skillsManagerOpen} onClose={() => setSkillsManagerOpen(false)} />
     </header>
   )
 }

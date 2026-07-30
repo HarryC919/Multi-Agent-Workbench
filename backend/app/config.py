@@ -72,6 +72,10 @@ class Settings(BaseSettings):
     # startup; relative to the backend root (resolved at import time).
     skills_md_dir: str = "skills_md"
 
+    # Phase 3 - Tavily web search API key (web_search skill).
+    # Free tier at tavily.com; empty key -> web_search returns an error shape.
+    tavily_api_key: str = ""
+
     # AgentService phase 2b-i — RAG / knowledge base knobs.
     # Embedding uses local sentence-transformers + bge-small-zh-v1.5; if torch
     # or the model is unavailable, EmbeddingService falls back to a FakeEmbedder

@@ -83,33 +83,34 @@ function StepUnit({ step, streamingTrace }: StepUnitProps) {
 
   const hasRetrieved = !!step.retrieved && step.retrieved.length > 0
   const traceText = step.text ? stripNarration(step.text) : ''
-  // Only render the collapsible card when there's reasoning to show.
-  const hasDetails = !!(step.thinking || traceText || step.action || step.observation)
+  // Render the collapsible card when there's any reasoning content (including
+  // retrieved chunks). The header always shows so the step number + finish
+  // badge are visible even if the details are collapsed.
+  const hasDetails = !!(step.thinking || traceText || step.action || step.observation || step.retrieved)
 
   return (
     <div className="space-y-1.5">
-      {hasDetails && (
-        <div className="rounded-md border border-border/60 p-2">
-          <div className="mb-1 flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setOpen((v) => !v)}
-              className="flex items-center gap-1 text-xs text-muted-foreground/80 hover:text-muted-foreground"
+      <div className="rounded-md border border-border/60 p-2">
+        <div className="mb-1 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            className="flex items-center gap-1 text-xs text-muted-foreground/80 hover:text-muted-foreground"
+          >
+            {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+            <span>第 {step.step} 步 推理</span>
+          </button>
+          {step.finish && FINISH_LABEL[step.finish] && (
+            <span
+              className="rounded px-1.5 py-0.5 text-[10px]"
+              style={{ backgroundColor: 'rgba(100, 116, 139, 0.15)' }}
             >
-              {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-              <span>第 {step.step} 步 推理</span>
-            </button>
-            {step.finish && FINISH_LABEL[step.finish] && (
-              <span
-                className="rounded px-1.5 py-0.5 text-[10px]"
-                style={{ backgroundColor: 'rgba(100, 116, 139, 0.15)' }}
-              >
-                {FINISH_LABEL[step.finish]}
-              </span>
-            )}
+              {FINISH_LABEL[step.finish]}
+            </span>
+          )}
           </div>
 
-          {open && (
+          {open && hasDetails && (
             <div className="space-y-1.5 text-xs text-muted-foreground/80">
               {step.thinking && (
                 <div className="whitespace-pre-wrap">{step.thinking}</div>
@@ -157,8 +158,7 @@ function StepUnit({ step, streamingTrace }: StepUnitProps) {
                 ))}
             </div>
           )}
-        </div>
-      )}
+      </div>
 
       {/* Phase 3: the per-step narration output (说明:), rendered as body text
           in the message flow - same styling as the final answer - NOT inside
