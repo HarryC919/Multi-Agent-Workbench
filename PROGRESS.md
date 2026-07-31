@@ -1,6 +1,6 @@
 # 项目进度跟踪
 
-> 最后更新：2026-07-30（Phase 3 第一轮：Markdown 技能 + 联网搜索 + Agent 交错输出）
+> 最后更新：2026-07-31（Phase 3 第二轮：Skills 管理 UI + Tavily 切换）
 
 ## 一、总体状态
 
@@ -732,3 +732,51 @@
 - **`duckduckgo_search` 改名 `ddgs`**：当前版本 8.1.1 仍可用（仅 RuntimeWarning 噪声，已用 `filterwarnings` 抑制）；未来可考虑切 `ddgs` 包。
 - **Skills 管理 UI 未做**：ChatHeader「Skills」按钮仍 disabled；markdown 技能管理走文件系统 + `POST /api/skills/reload` 热重载；上传/编辑 UI 留后续轮次。
 - **每步输出依赖模型遵守提示词**：若模型不输出 `说明:` 行，该步无正文输出（优雅降级，不崩）。提示词已强约束每步必须 `说明:` 开头。
+
+## 十九、本次工作记录（Phase 3 第二轮：Skills 管理 UI + Tavily 切换，2026-07-31）
+
+落地 §11.9 第三期第二轮：(1) Skills 管理弹窗（前端管理 .md 技能）；(2) 联网搜索从 DuckDuckGo 切换到 Tavily（解决 DDG 限流），移除 `duckduckgo-search` 依赖。
+
+### 19.1 Skills 管理 UI
+
+**后端** - `.md` 技能文件 CRUD（文件即数据源，写文件后 reload 注册表）：
+
+- [backend/app/skills/markdown_skill.py](backend/app/skills/markdown_skill.py)：新增 `assemble_markdown_skill(name, description, content)` 组装 frontmatter + 正文（`parse_markdown_skill` 的逆函数）。
+- [backend/app/skills/registry.py](backend/app/skills/registry.py)：新增 `get_markdown_skill_source(name, dir)` 返 `{name, description, content}`（供编辑回填）；`delete_markdown_skill(name, dir)` 删文件 + 注销。
+- [backend/app/routers/skills.py](backend/app/routers/skills.py)：新增 `_validate_skill_name()`（`^[a-zA-Z][a-zA-Z0-9_-]*$`，防路径穿越）+ 4 端点：`GET/POST/PUT/DELETE /api/skills/md[/{name}]`；声明在 `POST /skills/{skill_name}` 之前（同 reload 的静态路由坑）。
+- [backend/tests/test_skills.py](backend/tests/test_skills.py)：扩 6 用例（CRUD 全生命周期、非法 name、重名、Python 技能不可删、404、PUT 保留 description）。
+
+**前端** - mirror KnowledgeBaseManager 模式：
+
+- 新增 [frontend/src/api/skills.ts](frontend/src/api/skills.ts)：apiFetch 客户端（`fetchSkills`/`fetchMarkdownSkill`/`createMarkdownSkill`/`updateMarkdownSkill`/`deleteMarkdownSkill`/`reloadSkills`，全 JSON 无 multipart）。
+- 新增 [frontend/src/components/SkillsManager.tsx](frontend/src/components/SkillsManager.tsx)：Modal 弹窗--列表视图（全部技能 + source 徽标「MD/Python」）-> 编辑视图（name 只读 / description / content textarea monospace）-> 新建表单；Python 技能 disabled 不可编辑；删除二次确认（nested overlay 内联 `rgba` 样式，同 KBM 的 Tailwind v4 坑规避）；保存/删除后 reload + 刷新列表。
+- [frontend/src/components/ChatHeader.tsx](frontend/src/components/ChatHeader.tsx)：Skills 按钮去 `disabled`，`onClick` 开 SkillsManager；加 `skillsManagerOpen` state。
+- [frontend/src/types/index.ts](frontend/src/types/index.ts)：加 `SkillManifestItem`（name/description/source）、`MarkdownSkillSource`（name/description/content）。
+- 新增 [frontend/tests/components/SkillsManager.test.tsx](frontend/tests/components/SkillsManager.test.tsx)：6 用例（列表 + 徽标、新建、编辑回填、Python 不可编辑、删除确认、更新保存）。
+- 修复 [frontend/tests/components/AgentTrace.test.tsx](frontend/tests/components/AgentTrace.test.tsx)：8 用例适配第一轮的交错渲染结构；修了 `retrieved` 不在 `hasDetails` 检查里导致卡片不渲染的 bug；新增 narration 正文渲染用例。
+
+### 19.2 联网搜索切换到 Tavily
+
+**依赖选型**：用官方 `tavily-python` SDK（`AsyncTavilyClient`）而非 httpx 直连。skill 层不受 adapter"单 LLM 客户端栈"约束；`AsyncTavilyClient` 天然适配 async `run()`，省掉 `httpx.AsyncClient` 生命周期管理；内置超时/限流/key 异常类型。
+
+- [backend/pyproject.toml](backend/pyproject.toml)：删 `duckduckgo-search>=8.0,<9`，加 `tavily-python>=0.5,<1`；`uv lock` 移除 `primp`，纳入 `tiktoken`（tavily 传递依赖）。
+- [backend/app/config.py](backend/app/config.py) + [.env.example](backend/.env.example)：加 `tavily_api_key: str = ""`。
+- 重写 [backend/app/skills/web_search.py](backend/app/skills/web_search.py)：`AsyncTavilyClient(api_key).search(query, max_results, search_depth="basic")`；模块级 import（便于测试 patch）；保留引号剥离 + max_results 裁剪；空 key 返错误提示；结果 `{title,url,content}` -> `{title,url,snippet}` 映射（agent/前端无感）。
+- 重写 [backend/tests/test_web_search_skill.py](backend/tests/test_web_search_skill.py)：mock `AsyncTavilyClient.search`（11 用例），去掉多后端重试逻辑。
+
+### 验证
+
+- 后端 `uv run pytest -q` -> **125 passed**（原 118 + skills CRUD 6 + web_search 改写净 +1）。
+- 前端 `npm run test` -> **30 passed**（原 24 + SkillsManager 6；AgentTrace 修复 8）；`tsc --noEmit` + `build` + `lint` 全过（仅 1 个预先存在的 `useConversation.ts` 警告）。
+- 用户实测验证通过：Skills 弹窗新建/编辑/删除 .md 技能 + web_search 配 Tavily key 真实调用。
+
+### 已知限制
+
+- **Tavily 需 API key**：免费额度有限（每月 ~1000 次）；未配置 key 时 web_search 返错误提示不崩。`.env` 加 `TAVILY_API_KEY`。
+- **Python 技能不可编辑**：UI 仅管理 .md 技能；echo/current_time/web_search 内置只读。
+- **无技能启停**：所有注册技能始终对 Agent 可用（`enable_skills` 白名单已支持过滤，UI 不做勾选）。
+- **`duckduckgo_search` 已移除**：第一轮的 DDG 限流问题随之消除；`skills_md/` 历史 translator.md/summarizer.md 在 UI 正常展示可编辑。
+
+### 下一步草稿
+
+§11.7 剩余 4 项已草拟 §11.10 第三期第三轮计划，推荐优先做**厂商原生 tool-calling API**（从根本上解决 ReAct 文本解析脆弱性），RAG 增强（PDF/DOCX + 异步化 + BM25）作后续。范围待用户确认。

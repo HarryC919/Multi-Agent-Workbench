@@ -400,6 +400,7 @@ My_Agent/
 | AgentService 第二期 2b-i（RAG + 知识库管理）                    | ✅ 完成 | 本地 bge-small-zh + chromadb；KB CRUD + 文档上传/分块/检索；retrieve_notes 工厂 skill；普通 chat 静默注入、Agent 模式 ReAct 自主调用。后端 89 测试 / 前端 15 测试全过。Docker torch 烘焙 + CI 留尾巴。详见 PROGRESS 第十五节 |
 | AgentService 第二期 2b-ii（AgentTrace 面板）                    | ✅ 完成 | 结构化 step 卡片 + step-bounded SSE 事件；前端`<AgentTrace>` 组件。后端 88 测试 / 前端 23 测试全过。详见 PROGRESS 第十六节                                                                                                 |
 | 第三期第一轮（Markdown 技能 + 联网搜索 + Agent 交错输出）       | ✅ 完成 | `.md` 文件定义技能 + 热重载；DuckDuckGo `web_search` skill（引号剥离 + 多后端重试）；ReAct `说明:` 字段 + `narration` 事件，推理与输出逐步交错渲染。后端 118 测试全过。详见 PROGRESS 第十八节                        |
+| 第三期第二轮（Skills 管理 UI + Tavily 切换）                  | ✅ 完成 | SkillsManager 弹窗（md 技能 CRUD + source 徽标）；web_search 从 DuckDuckGo 切到 Tavily（`AsyncTavilyClient`，移除 DDG 依赖）。后端 125 / 前端 30 测试全过。详见 PROGRESS 第十九节                                  |
 
 ---
 
@@ -579,12 +580,12 @@ My_Agent/
 以下为第三期规划，**前两项已在第一轮完成**（详见 11.8）：
 
 - ~~完善 skills 模块，支持以 .md 文件形式导入技能。~~ ✅ 完成（第一轮，2026-07-30）
-- ~~先使用 LangChain 内部支持的联网搜索功能，如 DuckDuckGo search。~~ ✅ 完成（第一轮，2026-07-30）
+- ~~先使用 LangChain 内部支持的联网搜索功能，如 DuckDuckGo search。~~ ✅ 完成（第一轮，2026-07-30；第二轮切换到 Tavily）
 - 厂商原生 tool-calling API 接入（OpenAI `tool_calls` delta、Anthropic `tools` 参数）：替换 ReAct prompt 注入。
 - 异步化文档处理（上传文档后立即返回 doc_id，后台 chunking embedding）。
 - 混合检索（BM25 + 向量 ensemble）。
 - 知识库 RAG over PDF/DOCX 放开。
-- Skills 管理 UI（上传/编辑 .md 技能，目前走文件系统 + 热重载 API）。
+- ~~Skills 管理 UI（上传/编辑 .md 技能，目前走文件系统 + 热重载 API）。~~ ✅ 完成（第二轮，2026-07-31）
 
 ### 11.8 第三期第一轮：Markdown 技能 + 联网搜索 + Agent 交错输出 - ✅ 完成（2026-07-30）
 
@@ -647,7 +648,7 @@ My_Agent/
 - **Skills 管理 UI 未做**：ChatHeader「Skills」按钮仍 disabled；管理走文件系统 + 热重载 API。
 - **每步输出依赖模型遵守提示词**：若模型不输出 `说明:` 则该步无正文输出（优雅降级）。
 
-## 11.9 第三期第二轮：Skills 管理 UI + 联网搜索切换到 Tavily（计划已定，待开工）
+## 11.9 第三期第二轮：Skills 管理 UI + 联网搜索切换到 Tavily - ✅ 完成（2026-07-31）
 
 落地 Skills 管理 UI（前端弹窗管理 .md 技能），同时将联网搜索从 DuckDuckGo 切换到 Tavily（解决 DDG 限流问题），并移除 `duckduckgo-search` 依赖。
 
@@ -725,3 +726,48 @@ My_Agent/
 - **Python 技能不可编辑**：UI 仅管理 .md 技能；echo/current_time/web_search 为内置只读。
 - **无技能启停**：所有注册技能始终对 Agent 可用（`enable_skills` 白名单已支持过滤，但 UI 不做勾选）。
 - **历史 .md 技能**：`skills_md/` 现有 translator.md/summarizer.md 在 UI 中正常展示可编辑。
+
+## 11.10 第三期第三轮：草稿（待确认范围）
+
+> 以下为草稿，列出 §11.7 剩余 4 项及推荐分组，**范围待用户确认**后展开为详细计划。
+
+§11.7 剩余未完成项：
+
+1. **厂商原生 tool-calling API 接入**（OpenAI `tool_calls` delta、Anthropic `tools` 参数）-- 替换 ReAct prompt 注入。
+2. **异步化文档处理**（上传文档后立即返回 doc_id，后台 chunking + embedding）。
+3. **混合检索**（BM25 + 向量 ensemble）。
+4. **知识库 RAG over PDF/DOCX 放开**。
+
+### 推荐分组
+
+#### 方案 A：厂商原生 tool-calling（推荐，单独立项）
+
+**价值**：从根本上解决 ReAct 文本解析的脆弱性--第一轮/第二轮反复在修"模型伪造 Observation""Action Input 带引号""说明: 格式不遵守"等 prompt 合规问题。原生 tool-calling 让模型直接输出结构化 tool_call，不再依赖文本解析。
+
+**影响面**（大）：
+- `AdapterChatModel.bind_tools` 从 `NotImplementedError` 改为真实实现（OpenAI/Anthropic 各自的 `tools` 参数）。
+- `agent_service.py` ReAct 循环替换为 native tool-call 流（或保留 ReAct 作 fallback）。
+- SSE 协议变化：`action`/`observation` 事件改由 tool_call delta 驱动。
+- 前端 AgentTrace 适配（tool_call 结构而非 Action/Action Input 文本）。
+- 需评估 LangGraph `create_react_agent` 是否直接可用（此前特意没用，因 adapter 不 bind_tools）。
+
+**风险**：adapter 层签名扩展；非 OpenAI-compatible vendor（Gemini）的 tool-calling 格式差异；旧 ReAct 路径是否保留作 fallback。
+
+#### 方案 B：RAG 体验增强（PDF/DOCX + 异步化 + 混合检索）
+
+**价值**：补齐知识库的实用短板，三件都是中低风险增量。
+
+**影响面**（中）：
+- **PDF/DOCX 放开**：`routers/knowledge.py` 上传白名单加 `.pdf/.docx`（`file_parser.py` 已支持解析）；前端 KnowledgeBaseManager `accept` 扩展。低风险。
+- **异步化文档处理**：上传返 `doc_id` + `status=processing`，后台 task 做 chunking/embedding；前端轮询或 SSE 推进度。需引入后台任务机制（`asyncio.create_task` 或轻量队列）。
+- **混合检索 BM25**：`knowledge_service.retrieve` 加 BM25 + 向量 ensemble（`rank_bm25` 库）；score 归一化融合。
+
+#### 方案 C：两者都做（拆两轮）
+
+先做方案 B（低风险增量），再做方案 A（架构升级）。
+
+### 建议
+
+**优先做方案 A（厂商原生 tool-calling）**。理由：第一/二轮暴露的 Agent 输出问题（伪造 Observation、格式不遵守、引号剥离 hack）根因都是 ReAct 文本解析；原生 tool-calling 一次解决，且为后续多工具并行调用铺路。方案 B 的三项可作为 A 之后的快速增量。
+
+**待用户确认**：选哪个方案？确认后我把本节展开为 11.10.x 详细计划（文件清单 + 端点 + 测试 + 验证）。
