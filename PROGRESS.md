@@ -675,6 +675,7 @@
 **实测 `Agent.log` 反馈的两个问题**：(1) 每步推理输出埋在折叠推理块内，未作为正文渲染；(2) web_search 总是"无返回结果"。
 
 **根因定位**：
+
 - 问题 1：每步 `text`（含 `Thought`/`Action`/叙述）只进 AgentTrace 卡片，仅最终 `Final Answer` 提升为正文。
 - 问题 2 三层根因：①模型**伪造 Observation**（自己写 `Observation: [web_search: no results...]`，忽略真实结果）；②`Action Input` 带引号触发精确匹配；③DuckDuckGo 限流返空。
 
@@ -696,13 +697,13 @@
 
 **渲染结构（对照 `Agent-should.log`）**：
 
-```
+```text
 第 1 步 推理 ▼  ← 可折叠卡片（只含 Thought/Action/Observation，无 说明）
-  ┌──────────────────┐
-  │ Thought: ...     │
+  ┌───────────────────┐
+  │ Thought: ...      │
   │ Action: web_search│
   │ Observation: ...  │
-  └──────────────────┘
+  └───────────────────┘
 我先分别搜索一下这三个计划...   ← 正文输出（说明），始终可见
 
 第 2 步 推理 ▼

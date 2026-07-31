@@ -10,68 +10,70 @@
 
 ## 它能做什么？
 
-| 能力 | 说明 |
-| ---- | ---- |
-| **多厂商对话** | OpenAI / Anthropic / Gemini（原生）+ DeepSeek / GLM / Kimi（OpenAI 兼容）。策略模式适配器，无感知切换，每个模型可独立配置 API Key 与 Base URL。 |
-| **流式对话** | 基于 SSE 的逐 token 流式输出，实时渲染、可中止，多轮对话持久化到 SQLite。 |
-| **深度思考** | 输入区一键开关，模型正式回答前流式输出思考过程，可折叠区块呈现，刷新后仍可见。 |
-| **Agent 模式** | 基于 LangGraph 的 ReAct 循环 + 真实**工具调用**。Skills 包装为工具；每步的 Thought / Action / Observation 均流式输出。 |
-| **RAG / 知识库** | 本地 `bge-small-zh` 向量化 + Chroma 向量库。上传 `.md` 笔记；普通对话自动注入，Agent 模式经 `retrieve_notes` 工具**自主检索**。 |
-| **AgentTrace 面板** | 结构化步骤卡片（Thought / Action / Observation / 检索片段）+ step-bounded SSE，不再是扁平文本。 |
-| **技能系统** | `.md` 文件定义技能（YAML frontmatter + 正文 system prompt），支持热重载。内置 `echo` / `current_time` / `web_search` / `retrieve_notes` + 通过**技能管理 UI** 编辑 MD 技能。 |
-| **联网搜索** | 基于 Tavily 的 `web_search` 技能（替换了被限流的 DuckDuckGo 方案）。 |
-| **文件上传** | `.txt` / `.md` / 代码文件 / `.pdf` / `.docx` 解析为文本作为上下文发送。 |
-| **模型管理** | 预置 11 个模型，运行时增删改；模型级 API Key 不暴露给前端。 |
-| **虚拟滚动** | `@tanstack/react-virtual` 动态测高，1000+ 消息下保持流畅。 |
+| 能力                      | 说明                                                                                                                                                                                         |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **多厂商对话**      | OpenAI / Anthropic / Gemini（原生）+ DeepSeek / GLM / Kimi（OpenAI 兼容）。策略模式适配器，无感知切换，每个模型可独立配置 API Key 与 Base URL。                                              |
+| **流式对话**        | 基于 SSE 的逐 token 流式输出，实时渲染、可中止，多轮对话持久化到 SQLite。                                                                                                                    |
+| **深度思考**        | 输入区一键开关，模型正式回答前流式输出思考过程，可折叠区块呈现，刷新后仍可见。                                                                                                               |
+| **Agent 模式**      | 基于 LangGraph 的 ReAct 循环 + 真实**工具调用**。Skills 包装为工具；每步的 Thought / Action / Observation 均流式输出。                                                                 |
+| **RAG / 知识库**    | 本地`bge-small-zh` 向量化 + Chroma 向量库。上传 `.md` 笔记；普通对话自动注入，Agent 模式经 `retrieve_notes` 工具**自主检索**。                                                   |
+| **AgentTrace 面板** | 结构化步骤卡片（Thought / Action / Observation / 检索片段）+ step-bounded SSE，不再是扁平文本。                                                                                              |
+| **技能系统**        | `.md` 文件定义技能（YAML frontmatter + 正文 system prompt），支持热重载。内置 `echo` / `current_time` / `web_search` / `retrieve_notes` + 通过**技能管理 UI** 编辑 MD 技能。 |
+| **联网搜索**        | 基于 Tavily 的`web_search` 技能（替换了被限流的 DuckDuckGo 方案）。                                                                                                                        |
+| **文件上传**        | `.txt` / `.md` / 代码文件 / `.pdf` / `.docx` 解析为文本作为上下文发送。                                                                                                              |
+| **模型管理**        | 预置 11 个模型，运行时增删改；模型级 API Key 不暴露给前端。                                                                                                                                  |
+| **虚拟滚动**        | `@tanstack/react-virtual` 动态测高，1000+ 消息下保持流畅。                                                                                                                                 |
 
 ---
 
 ## 架构概览
 
+注：这段为了方便对齐采用英文
+
 ```text
 ┌──────────────────────────────────────────────────────────────────┐
 │  Frontend (React 19 + Vite + Tailwind CSS v4)                    │
-│  ┌───────────┐ ┌─────────────────────────────────────────────┐  │
-│  │  Sidebar  │ │  Workspace                                  │  │
-│  │ Chat List │ │  ┌─────────────────────────────────────┐    │  │
-│  │ Search    │ │  │ ChatHeader (模型/思考/Agent 开关       │    │  │
-│  │ New Chat  │ │  │  / 知识库选择 / 技能 / 模型管理)        │    │  │
-│  │           │ │  ├─────────────────────────────────────┤    │  │
-│  │           │ │  │ MessageList (虚拟滚动)                │    │  │
-│  │           │ │  │  MessageItem                          │    │  │
-│  │           │ │  │   ├ MarkdownContent (渲染 + 高亮)      │    │  │
-│  │           │ │  │   ├ ThinkingBlock (可折叠)            │    │  │
-│  │           │ │  │   └ AgentTrace (步骤卡片)             │    │  │
-│  │           │ │  ├─────────────────────────────────────┤    │  │
-│  │           │ │  │ InputArea (输入 + 文件上传 + 发送      │    │  │
-│  │           │ │  │  + 思考/Agent 开关)                   │    │  │
-│  │           │ │  └─────────────────────────────────────┘    │  │
-│  └───────────┘ └─────────────────────────────────────────────┘  │
-│            │  Zustand store + localStorage 持久化                 │
+│  ┌───────────┐ ┌─────────────────────────────────────────────┐   │
+│  │  Sidebar  │ │  Workspace                                  │   │
+│  │ Chat List │ │  ┌───────────────────────────────────────┐  │   │
+│  │ Search    │ │  │ ChatHeader (Model / Thinking / Agent  │  │   │
+│  │ New Chat  │ │  │  toggle / KB select / Skills / Models)│  │   │
+│  │           │ │  ├───────────────────────────────────────┤  │   │
+│  │           │ │  │ MessageList (virtualized)             │  │   │
+│  │           │ │  │  MessageItem                          │  │   │
+│  │           │ │  │   ├ MarkdownContent (render + hl)     │  │   │
+│  │           │ │  │   ├ ThinkingBlock (collapsible)       │  │   │
+│  │           │ │  │   └ AgentTrace (step cards)           │  │   │
+│  │           │ │  ├───────────────────────────────────────┤  │   │
+│  │           │ │  │ InputArea (text + file upload + send  │  │   │
+│  │           │ │  │  + Thinking/Agent toggles)            │  │   │
+│  │           │ │  └───────────────────────────────────────┘  │   │
+│  └───────────┘ └─────────────────────────────────────────────┘   │
+│            │  Zustand store + localStorage persist               │
 └────────────┼─────────────────────────────────────────────────────┘
-             │ HTTP (Vite 代理 /api → :8000)
+             │ HTTP (Vite proxy /api → :8000)
              ▼
 ┌──────────────────────────────────────────────────────────────────┐
 │  Backend (FastAPI + SQLAlchemy async + SQLite)                   │
-│  ┌──────────────┐ ┌───────────────────┐ ┌────────────────────┐  │
-│  │ Routers      │ │ Services          │ │ Adapters           │  │
-│  │ /api/chat    │ │ ConversationSvc   │ │ OpenAI             │  │
-│  │ /api/agent-  │ │ AgentService      │ │ Anthropic          │  │
-│  │   chat       │ │  (LangGraph ReAct)│ │ Gemini             │  │
-│  │ /api/conv.   │ │ KnowledgeService  │ │ OpenAI-Compatible  │  │
-│  │ /api/models  │ │ EmbeddingService  │ │ (DeepSeek/GLM/Kimi)│  │
-│  │ /api/upload  │ │ FileParser        │ └────────────────────┘  │
-│  │ /api/skills  │ │ LangChainAdapter  │            ▲            │
-│  │ /api/knowl…  │ └───────────────────┘            │ httpx+SSE  │
-│  └──────────────┘                                  │            │
-│  ┌──────────────┐ ┌────────────────────────────────┴──────────┐ │
-│  │ Models (ORM) │ │ Skills (注册表)                            │ │
-│  │  + Pydantic  │ │  echo · current_time · web_search (Tavily)│ │
-│  └──────────────┘ │  retrieve_notes (RAG) · MarkdownSkill(.md)│ │
-│  ┌──────────────┐ └──────────────────────────────────────────┘ │
-│  │ SQLite       │  ┌─────────────────────────────────────────┐ │
-│  │  + aiosqlite │  │ ChromaDB (向量) · bge-small-zh 向量化    │ │
-│  └──────────────┘  └─────────────────────────────────────────┘ │
+│  ┌──────────────┐ ┌───────────────────┐ ┌────────────────────┐   │
+│  │ Routers      │ │ Services          │ │ Adapters           │   │
+│  │ /api/chat    │ │ ConversationSvc   │ │ OpenAI             │   │
+│  │ /api/agent-  │ │ AgentService      │ │ Anthropic          │   │
+│  │   chat       │ │  (LangGraph ReAct)│ │ Gemini             │   │
+│  │ /api/conv.   │ │ KnowledgeService  │ │ OpenAI-Compatible  │   │
+│  │ /api/models  │ │ EmbeddingService  │ │ (DeepSeek/GLM/Kimi)│   │
+│  │ /api/upload  │ │ FileParser        │ └────────────────────┘   │
+│  │ /api/skills  │ │ LangChainAdapter  │            ▲             │
+│  │ /api/knowl…  │ └───────────────────┘            │ httpx+SSE   │
+│  └──────────────┘                                  │             │
+│  ┌──────────────┐ ┌────────────────────────────────┴──────────┐  │
+│  │ Models (ORM) │ │ Skills (registry)                         │  │
+│  │  + Pydantic  │ │  echo · current_time · web_search (Tavily)│  │
+│  └──────────────┘ │  retrieve_notes (RAG) · MarkdownSkill(.md)│  │
+│  ┌──────────────┐ └───────────────────────────────────────────┘  │
+│  │ SQLite       │  ┌──────────────────────────────────────────┐  │
+│  │  + aiosqlite │  │ ChromaDB (vectors) · bge-small-zh embed  │  │
+│  └──────────────┘  └──────────────────────────────────────────┘  │
 └──────────────────────────────────────────────────────────────────┘
              │
              ▼
@@ -89,38 +91,38 @@
 
 ### 前端
 
-| 类别 | 技术 | 用途 |
-| ---- | ---- | ---- |
-| 框架 | React 19 | UI 构建 |
-| 语言 | TypeScript | 类型安全 |
-| 构建 | Vite | 开发/构建 |
-| 样式 | Tailwind CSS v4 | 原子化 CSS |
-| 组件库 | shadcn/ui | UI 原语（Button, Input, Modal, Select） |
-| 状态管理 | Zustand 5 + persist | 全局状态 + localStorage 持久化 |
-| 虚拟滚动 | @tanstack/react-virtual | 长列表性能优化 |
-| Markdown | react-markdown + remark-gfm | 消息渲染 |
-| 代码高亮 | react-syntax-highlighter | 代码块语法高亮 |
-| 文件上传 | react-dropzone | 拖拽/点击上传 |
-| 图标 | lucide-react | UI 图标 |
-| 日期 | date-fns | 时间格式化 |
+| 类别     | 技术                        | 用途                                    |
+| -------- | --------------------------- | --------------------------------------- |
+| 框架     | React 19                    | UI 构建                                 |
+| 语言     | TypeScript                  | 类型安全                                |
+| 构建     | Vite                        | 开发/构建                               |
+| 样式     | Tailwind CSS v4             | 原子化 CSS                              |
+| 组件库   | shadcn/ui                   | UI 原语（Button, Input, Modal, Select） |
+| 状态管理 | Zustand 5 + persist         | 全局状态 + localStorage 持久化          |
+| 虚拟滚动 | @tanstack/react-virtual     | 长列表性能优化                          |
+| Markdown | react-markdown + remark-gfm | 消息渲染                                |
+| 代码高亮 | react-syntax-highlighter    | 代码块语法高亮                          |
+| 文件上传 | react-dropzone              | 拖拽/点击上传                           |
+| 图标     | lucide-react                | UI 图标                                 |
+| 日期     | date-fns                    | 时间格式化                              |
 
 ### 后端
 
-| 类别 | 技术 | 用途 |
-| ---- | ---- | ---- |
-| 框架 | FastAPI (≥0.115) | Web 服务 |
-| 运行时 | Uvicorn | ASGI 服务器 |
-| ORM | SQLAlchemy 2.0 (async) | 数据库操作 |
-| 数据库 | SQLite + aiosqlite | 持久化存储 |
-| 校验 | Pydantic v2 + pydantic-settings | 请求校验 + 配置管理 |
-| HTTP | httpx | 调用 LLM API |
-| Agent 编排 | LangGraph + langchain-core | ReAct 循环、工具调用 |
-| LLM 桥接 | langchain-text-splitters | Markdown / 递归分块 |
-| 向量库 | chromadb | 磁盘持久化向量存储 |
-| 向量化 | sentence-transformers + `BAAI/bge-small-zh-v1.5` | 本地 embedding 模型 |
-| 联网搜索 | tavily-python | `web_search` 技能后端 |
-| PDF | pdfplumber | PDF 文件解析 |
-| DOCX | python-docx | Word 文件解析 |
+| 类别       | 技术                                              | 用途                    |
+| ---------- | ------------------------------------------------- | ----------------------- |
+| 框架       | FastAPI (≥0.115)                                 | Web 服务                |
+| 运行时     | Uvicorn                                           | ASGI 服务器             |
+| ORM        | SQLAlchemy 2.0 (async)                            | 数据库操作              |
+| 数据库     | SQLite + aiosqlite                                | 持久化存储              |
+| 校验       | Pydantic v2 + pydantic-settings                   | 请求校验 + 配置管理     |
+| HTTP       | httpx                                             | 调用 LLM API            |
+| Agent 编排 | LangGraph + langchain-core                        | ReAct 循环、工具调用    |
+| LLM 桥接   | langchain-text-splitters                          | Markdown / 递归分块     |
+| 向量库     | chromadb                                          | 磁盘持久化向量存储      |
+| 向量化     | sentence-transformers +`BAAI/bge-small-zh-v1.5` | 本地 embedding 模型     |
+| 联网搜索   | tavily-python                                     | `web_search` 技能后端 |
+| PDF        | pdfplumber                                        | PDF 文件解析            |
+| DOCX       | python-docx                                       | Word 文件解析           |
 
 ---
 
@@ -203,14 +205,14 @@
 
 ### 环境要求
 
-- Python ≥ 3.11（推荐使用 [uv](https://docs.astral.sh/uv/)）
-- Node.js ≥ 20
+- Python ≥ 3.11（推荐使用 [uv](https://docs.astral.sh/uv/), python 3.13）
+- Node.js ≥ 20 (推荐使用 Node.js 24)
 
 ### 1. 克隆并进入项目
 
 ```bash
 git clone <repo-url>
-cd My_Agent
+cd Multi-Agent-Workbench
 ```
 
 ### 2. 启动后端
@@ -226,7 +228,7 @@ uv sync
 uv run uvicorn main:app --reload
 ```
 
-后端运行在 **<http://localhost:8000>** · Swagger 文档：<http://localhost:8000/docs>
+后端运行在 **[http://localhost:8000](http://localhost:8000)** · Swagger 文档：[http://localhost:8000/docs](http://localhost:8000/docs)
 
 > **RAG 提示**：`uv sync` 会安装 `sentence-transformers` + torch。若跳过，后端仍可启动，`FakeEmbedder` 会让 RAG 降级为 no-op（上传 → 503，检索 → `[]`）。
 
@@ -238,7 +240,7 @@ npm install
 npm run dev
 ```
 
-前端运行在 **<http://localhost:5173>**，Vite 已配置代理 `/api` → `http://localhost:8000`。
+前端运行在 **[http://localhost:5173](http://localhost:5173)**，Vite 已配置代理 `/api` → `http://localhost:8000`。
 
 ### Docker 一键部署
 
@@ -246,66 +248,66 @@ npm run dev
 docker compose up
 ```
 
-前端在 **<http://localhost>**（80 端口），后端经 nginx 反代；已关闭 `proxy_buffering` 保证 SSE 直通。
+前端在 **[http://localhost](http://localhost)**（80 端口），后端经 nginx 反代；已关闭 `proxy_buffering` 保证 SSE 直通。
 
 ---
 
 ## 配置说明（`.env`）
 
-| 变量 | 默认值 | 说明 |
-| ---- | ------ | ---- |
-| `OPENAI_API_KEY` / `OPENAI_BASE_URL` | — | OpenAI 原生 |
-| `ANTHROPIC_API_KEY` | — | Anthropic 原生 |
-| `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL` | — | DeepSeek（OpenAI 兼容） |
-| `GLM_API_KEY` / `GLM_BASE_URL` | — | GLM / 智谱（OpenAI 兼容） |
-| `KIMI_API_KEY` / `KIMI_BASE_URL` | — | Kimi / 月之暗面（OpenAI 兼容） |
-| `GEMINI_API_KEY` | — | Gemini 原生 |
-| `TAVILY_API_KEY` | — | Tavily 联网搜索（有免费额度） |
-| `AGENT_MAX_STEPS` | `8` | Agent ReAct 最大步数 |
-| `AGENT_STEP_TEMPERATURE` | `0.7` | 步级温度（占位） |
-| `AGENT_FINAL_TEMPERATURE` | `0.4` | 最终答案温度（占位） |
-| `EMBEDDING_MODEL` | `BAAI/bge-small-zh-v1.5` | 本地 embedding 模型 |
-| `EMBEDDING_DEVICE` | `cpu` | 向量化设备（`cpu` / `cuda`） |
-| `CHROMA_PERSIST_DIR` | `.chroma` | ChromaDB 索引目录（相对 backend root 解析） |
-| `KB_CHUNK_SIZE` / `KB_CHUNK_OVERLAP` | `800` / `100` | 分块参数 |
-| `KB_TOP_K` / `KB_MIN_SCORE` | `4` / `0.3` | 检索参数 |
-| `DATABASE_URL` | `sqlite+aiosqlite:///./workbench.db` | 数据库 URL |
+| 变量                                         | 默认值                                 | 说明                                        |
+| -------------------------------------------- | -------------------------------------- | ------------------------------------------- |
+| `OPENAI_API_KEY` / `OPENAI_BASE_URL`     | —                                     | OpenAI 原生                                 |
+| `ANTHROPIC_API_KEY`                        | —                                     | Anthropic 原生                              |
+| `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL` | —                                     | DeepSeek（OpenAI 兼容）                     |
+| `GLM_API_KEY` / `GLM_BASE_URL`           | —                                     | GLM / 智谱（OpenAI 兼容）                   |
+| `KIMI_API_KEY` / `KIMI_BASE_URL`         | —                                     | Kimi / 月之暗面（OpenAI 兼容）              |
+| `GEMINI_API_KEY`                           | —                                     | Gemini 原生                                 |
+| `TAVILY_API_KEY`                           | —                                     | Tavily 联网搜索（有免费额度）               |
+| `AGENT_MAX_STEPS`                          | `8`                                  | Agent ReAct 最大步数                        |
+| `AGENT_STEP_TEMPERATURE`                   | `0.7`                                | 步级温度（占位）                            |
+| `AGENT_FINAL_TEMPERATURE`                  | `0.4`                                | 最终答案温度（占位）                        |
+| `EMBEDDING_MODEL`                          | `BAAI/bge-small-zh-v1.5`             | 本地 embedding 模型                         |
+| `EMBEDDING_DEVICE`                         | `cpu`                                | 向量化设备（`cpu` / `cuda`）            |
+| `CHROMA_PERSIST_DIR`                       | `.chroma`                            | ChromaDB 索引目录（相对 backend root 解析） |
+| `KB_CHUNK_SIZE` / `KB_CHUNK_OVERLAP`     | `800` / `100`                      | 分块参数                                    |
+| `KB_TOP_K` / `KB_MIN_SCORE`              | `4` / `0.3`                        | 检索参数                                    |
+| `DATABASE_URL`                             | `sqlite+aiosqlite:///./workbench.db` | 数据库 URL                                  |
 
 ---
 
 ## API 文档
 
-| 方法 | 路径 | 说明 |
-| ---- | ---- | ---- |
-| `GET` | `/health` | 健康检查 |
-| `GET` | `/api/conversations?q=` | 列出会话（可选搜索） |
-| `POST` | `/api/conversations` | 创建会话 |
-| `GET` | `/api/conversations/{id}` | 获取会话详情（含消息） |
-| `PATCH` | `/api/conversations/{id}` | 重命名会话 |
-| `DELETE` | `/api/conversations/{id}` | 删除会话 |
-| `POST` | `/api/chat` | 发送消息（SSE 流式） |
-| `POST` | `/api/agent-chat` | Agent ReAct 对话（SSE 流式） |
-| `POST` | `/api/upload` | 上传文件 |
-| `GET` | `/api/models` | 列出活跃模型 |
-| `GET` | `/api/models/all` | 列出所有模型 |
-| `POST` | `/api/models` | 创建模型 |
-| `PUT` | `/api/models/{id}` | 更新模型 |
-| `DELETE` | `/api/models/{id}` | 删除模型 |
-| `GET` | `/api/skills` | 列出技能清单（含 `source`） |
-| `POST` | `/api/skills/{name}` | 调用技能 |
-| `POST` | `/api/skills/reload` | 热重载 markdown 技能 |
-| `GET` | `/api/skills/md/{name}` | 获取 markdown 技能源码 |
-| `POST` | `/api/skills/md` | 新建 markdown 技能 |
-| `PUT` | `/api/skills/md/{name}` | 更新 markdown 技能 |
-| `DELETE` | `/api/skills/md/{name}` | 删除 markdown 技能 |
-| `GET` | `/api/knowledge-bases` | 列出知识库 |
-| `POST` | `/api/knowledge-bases` | 创建知识库 |
-| `GET` | `/api/knowledge-bases/{id}` | 获取知识库 |
-| `PATCH` | `/api/knowledge-bases/{id}` | 更新知识库 |
-| `DELETE` | `/api/knowledge-bases/{id}` | 删除知识库（含文档） |
-| `GET` | `/api/knowledge-bases/{id}/documents` | 列出文档 |
-| `POST` | `/api/knowledge-bases/{id}/documents` | 上传文档（multipart） |
-| `DELETE` | `/api/knowledge-bases/{id}/documents/{doc_id}` | 删除文档 |
+| 方法       | 路径                                             | 说明                         |
+| ---------- | ------------------------------------------------ | ---------------------------- |
+| `GET`    | `/health`                                      | 健康检查                     |
+| `GET`    | `/api/conversations?q=`                        | 列出会话（可选搜索）         |
+| `POST`   | `/api/conversations`                           | 创建会话                     |
+| `GET`    | `/api/conversations/{id}`                      | 获取会话详情（含消息）       |
+| `PATCH`  | `/api/conversations/{id}`                      | 重命名会话                   |
+| `DELETE` | `/api/conversations/{id}`                      | 删除会话                     |
+| `POST`   | `/api/chat`                                    | 发送消息（SSE 流式）         |
+| `POST`   | `/api/agent-chat`                              | Agent ReAct 对话（SSE 流式） |
+| `POST`   | `/api/upload`                                  | 上传文件                     |
+| `GET`    | `/api/models`                                  | 列出活跃模型                 |
+| `GET`    | `/api/models/all`                              | 列出所有模型                 |
+| `POST`   | `/api/models`                                  | 创建模型                     |
+| `PUT`    | `/api/models/{id}`                             | 更新模型                     |
+| `DELETE` | `/api/models/{id}`                             | 删除模型                     |
+| `GET`    | `/api/skills`                                  | 列出技能清单（含`source`） |
+| `POST`   | `/api/skills/{name}`                           | 调用技能                     |
+| `POST`   | `/api/skills/reload`                           | 热重载 markdown 技能         |
+| `GET`    | `/api/skills/md/{name}`                        | 获取 markdown 技能源码       |
+| `POST`   | `/api/skills/md`                               | 新建 markdown 技能           |
+| `PUT`    | `/api/skills/md/{name}`                        | 更新 markdown 技能           |
+| `DELETE` | `/api/skills/md/{name}`                        | 删除 markdown 技能           |
+| `GET`    | `/api/knowledge-bases`                         | 列出知识库                   |
+| `POST`   | `/api/knowledge-bases`                         | 创建知识库                   |
+| `GET`    | `/api/knowledge-bases/{id}`                    | 获取知识库                   |
+| `PATCH`  | `/api/knowledge-bases/{id}`                    | 更新知识库                   |
+| `DELETE` | `/api/knowledge-bases/{id}`                    | 删除知识库（含文档）         |
+| `GET`    | `/api/knowledge-bases/{id}/documents`          | 列出文档                     |
+| `POST`   | `/api/knowledge-bases/{id}/documents`          | 上传文档（multipart）        |
+| `DELETE` | `/api/knowledge-bases/{id}/documents/{doc_id}` | 删除文档                     |
 
 ### 流式聊天请求体 (`POST /api/chat`)
 
@@ -440,14 +442,14 @@ My_Agent/
 
 ## 数据库模型
 
-| 表 | 说明 | 关键字段 |
-| ---- | ---- | ---------- |
-| `conversations` | 会话 | id, title, created_at, updated_at |
-| `messages` | 消息 | id, conversation_id, role, content, thinking, model, status, metadata_ |
-| `uploaded_files` | 上传文件 | id, conversation_id, name, text_content |
-| `model_configs` | 模型配置 | id, model_id, vendor, name, adapter_type, base_url, api_key, is_active |
-| `knowledge_bases` | 知识库 | id, name, description, created_at, updated_at |
-| `knowledge_docs` | KB 文档 | id, kb_id, filename, sha256, text, created_at |
+| 表                  | 说明     | 关键字段                                                               |
+| ------------------- | -------- | ---------------------------------------------------------------------- |
+| `conversations`   | 会话     | id, title, created_at, updated_at                                      |
+| `messages`        | 消息     | id, conversation_id, role, content, thinking, model, status, metadata_ |
+| `uploaded_files`  | 上传文件 | id, conversation_id, name, text_content                                |
+| `model_configs`   | 模型配置 | id, model_id, vendor, name, adapter_type, base_url, api_key, is_active |
+| `knowledge_bases` | 知识库   | id, name, description, created_at, updated_at                          |
+| `knowledge_docs`  | KB 文档  | id, kb_id, filename, sha256, text, created_at                          |
 
 Schema 变更通过启动时的轻量 `ALTER TABLE` 迁移应用（无 Alembic）。
 
@@ -479,19 +481,19 @@ python scripts/seed-1000msgs.py          # 灌入 1000 条消息的会话用于 
 
 ### 阶段概览
 
-| 阶段 | 状态 | 内容 |
-| ---- | ---- | ---- |
-| Phase 1 | ✅ 完成 | 后端框架 + 数据库 + 模型适配 + 流式聊天 API |
-| Phase 2 | ✅ 完成 | 前端框架 + 会话管理 + 消息展示 + 流式渲染 |
-| Phase 3 | ✅ 完成 | 深度思考全链路 |
-| Phase 4 | ✅ 完成 | 文件上传 + 模型管理 + 虚拟滚动 |
-| 跨平台 + 部署 | ✅ 完成 | Docker + GHA 三平台 matrix + 性能/hook 测试 |
-| AgentService 第一期 | ✅ 完成 | ReAct 多轮推理（无工具） |
-| AgentService 第二期 2a | ✅ 完成 | LangGraph + 工具调用（Skills → 工具） |
-| AgentService 第二期 2b-i | ✅ 完成 | RAG + 知识库管理 |
-| AgentService 第二期 2b-ii | ✅ 完成 | AgentTrace 面板 + step-bounded SSE |
-| 第三期第一轮 | ✅ 完成 | Markdown 技能 + 联网搜索 + Agent 交错输出 |
-| 第三期第二轮 | ✅ 完成 | 技能管理 UI + Tavily 联网搜索 |
+| 阶段                      | 状态    | 内容                                        |
+| ------------------------- | ------- | ------------------------------------------- |
+| Phase 1                   | ✅ 完成 | 后端框架 + 数据库 + 模型适配 + 流式聊天 API |
+| Phase 2                   | ✅ 完成 | 前端框架 + 会话管理 + 消息展示 + 流式渲染   |
+| Phase 3                   | ✅ 完成 | 深度思考全链路                              |
+| Phase 4                   | ✅ 完成 | 文件上传 + 模型管理 + 虚拟滚动              |
+| 跨平台 + 部署             | ✅ 完成 | Docker + GHA 三平台 matrix + 性能/hook 测试 |
+| AgentService 第一期       | ✅ 完成 | ReAct 多轮推理（无工具）                    |
+| AgentService 第二期 2a    | ✅ 完成 | LangGraph + 工具调用（Skills → 工具）      |
+| AgentService 第二期 2b-i  | ✅ 完成 | RAG + 知识库管理                            |
+| AgentService 第二期 2b-ii | ✅ 完成 | AgentTrace 面板 + step-bounded SSE          |
+| 第三期第一轮              | ✅ 完成 | Markdown 技能 + 联网搜索 + Agent 交错输出   |
+| 第三期第二轮              | ✅ 完成 | 技能管理 UI + Tavily 联网搜索               |
 
 ### 计划中（第三期第三轮，范围待确认）
 

@@ -10,19 +10,19 @@ An intelligent chat workbench (Kimi Workspace–like) with a decoupled frontend/
 
 ## What can it do?
 
-| Capability | Description |
-| ---------- | ----------- |
-| **Multi-vendor chat** | OpenAI / Anthropic / Gemini (native) + DeepSeek / GLM / Kimi (OpenAI-compatible). Strategy-pattern adapters, transparent switching, per-model API Key & Base URL. |
-| **Streaming dialogue** | SSE token-by-token streaming, real-time render, abort support, multi-round conversations persisted to SQLite. |
-| **Deep Thinking** | Toggle in the input area; the model streams its reasoning before the answer, shown in collapsible blocks, persisted across refresh. |
-| **Agent mode** | LangGraph-based ReAct loop with real **tool calling**. Skills are exposed as tools; each step's thought / action / observation is streamed. |
-| **RAG / Knowledge Base** | Local `bge-small-zh` embeddings + Chroma vector store. Upload `.md` notes; the KB is auto-injected in normal chat and **self-retrieved** by the Agent via a `retrieve_notes` tool. |
-| **AgentTrace panel** | Structured step cards (thought / action / observation / retrieved chunks) with step-bounded SSE — not a flat text blob. |
-| **Skills system** | `.md` files define skills (YAML frontmatter + system prompt), hot-reloaded. Built-in `echo`, `current_time`, `web_search`, `retrieve_notes` + editable MD skills via a **Skills Manager UI**. |
-| **Web search** | Tavily-backed `web_search` skill (replaced the rate-limited DuckDuckGo path). |
-| **File upload** | `.txt` / `.md` / code files / `.pdf` / `.docx` parsed to text and sent as context. |
-| **Model management** | 11 pre-seeded models; runtime CRUD; per-model API Key never exposed to the frontend. |
-| **Virtual scrolling** | `@tanstack/react-virtual` with dynamic measurement; smooth at 1000+ messages. |
+| Capability                     | Description                                                                                                                                                                                                   |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Multi-vendor chat**    | OpenAI / Anthropic / Gemini (native) + DeepSeek / GLM / Kimi (OpenAI-compatible). Strategy-pattern adapters, transparent switching, per-model API Key & Base URL.                                             |
+| **Streaming dialogue**   | SSE token-by-token streaming, real-time render, abort support, multi-round conversations persisted to SQLite.                                                                                                 |
+| **Deep Thinking**        | Toggle in the input area; the model streams its reasoning before the answer, shown in collapsible blocks, persisted across refresh.                                                                           |
+| **Agent mode**           | LangGraph-based ReAct loop with real**tool calling**. Skills are exposed as tools; each step's thought / action / observation is streamed.                                                              |
+| **RAG / Knowledge Base** | Local`bge-small-zh` embeddings + Chroma vector store. Upload `.md` notes; the KB is auto-injected in normal chat and **self-retrieved** by the Agent via a `retrieve_notes` tool.                 |
+| **AgentTrace panel**     | Structured step cards (thought / action / observation / retrieved chunks) with step-bounded SSE — not a flat text blob.                                                                                      |
+| **Skills system**        | `.md` files define skills (YAML frontmatter + system prompt), hot-reloaded. Built-in `echo`, `current_time`, `web_search`, `retrieve_notes` + editable MD skills via a **Skills Manager UI**. |
+| **Web search**           | Tavily-backed`web_search` skill (replaced the rate-limited DuckDuckGo path).                                                                                                                                |
+| **File upload**          | `.txt` / `.md` / code files / `.pdf` / `.docx` parsed to text and sent as context.                                                                                                                    |
+| **Model management**     | 11 pre-seeded models; runtime CRUD; per-model API Key never exposed to the frontend.                                                                                                                          |
+| **Virtual scrolling**    | `@tanstack/react-virtual` with dynamic measurement; smooth at 1000+ messages.                                                                                                                               |
 
 ---
 
@@ -31,47 +31,47 @@ An intelligent chat workbench (Kimi Workspace–like) with a decoupled frontend/
 ```text
 ┌──────────────────────────────────────────────────────────────────┐
 │  Frontend (React 19 + Vite + Tailwind CSS v4)                    │
-│  ┌───────────┐ ┌─────────────────────────────────────────────┐  │
-│  │  Sidebar  │ │  Workspace                                  │  │
-│  │ Chat List │ │  ┌─────────────────────────────────────┐    │  │
-│  │ Search    │ │  │ ChatHeader (Model / Thinking / Agent │    │  │
-│  │ New Chat  │ │  │  toggle / KB select / Skills / Models)│    │  │
-│  │           │ │  ├─────────────────────────────────────┤    │  │
-│  │           │ │  │ MessageList (virtualized)           │    │  │
-│  │           │ │  │  MessageItem                         │    │  │
-│  │           │ │  │   ├ MarkdownContent (render + hl)    │    │  │
-│  │           │ │  │   ├ ThinkingBlock (collapsible)      │    │  │
-│  │           │ │  │   └ AgentTrace (step cards)          │    │  │
-│  │           │ │  ├─────────────────────────────────────┤    │  │
-│  │           │ │  │ InputArea (text + file upload + send │    │  │
-│  │           │ │  │  + Thinking/Agent toggles)           │    │  │
-│  │           │ │  └─────────────────────────────────────┘    │  │
-│  └───────────┘ └─────────────────────────────────────────────┘  │
+│  ┌───────────┐ ┌─────────────────────────────────────────────┐   │
+│  │  Sidebar  │ │  Workspace                                  │   │
+│  │ Chat List │ │  ┌───────────────────────────────────────┐  │   │
+│  │ Search    │ │  │ ChatHeader (Model / Thinking / Agent  │  │   │
+│  │ New Chat  │ │  │  toggle / KB select / Skills / Models)│  │   │
+│  │           │ │  ├───────────────────────────────────────┤  │   │
+│  │           │ │  │ MessageList (virtualized)             │  │   │
+│  │           │ │  │  MessageItem                          │  │   │
+│  │           │ │  │   ├ MarkdownContent (render + hl)     │  │   │
+│  │           │ │  │   ├ ThinkingBlock (collapsible)       │  │   │
+│  │           │ │  │   └ AgentTrace (step cards)           │  │   │
+│  │           │ │  ├───────────────────────────────────────┤  │   │
+│  │           │ │  │ InputArea (text + file upload + send  │  │   │
+│  │           │ │  │  + Thinking/Agent toggles)            │  │   │
+│  │           │ │  └───────────────────────────────────────┘  │   │
+│  └───────────┘ └─────────────────────────────────────────────┘   │
 │            │  Zustand store + localStorage persist               │
 └────────────┼─────────────────────────────────────────────────────┘
              │ HTTP (Vite proxy /api → :8000)
              ▼
 ┌──────────────────────────────────────────────────────────────────┐
 │  Backend (FastAPI + SQLAlchemy async + SQLite)                   │
-│  ┌──────────────┐ ┌───────────────────┐ ┌────────────────────┐  │
-│  │ Routers      │ │ Services          │ │ Adapters           │  │
-│  │ /api/chat    │ │ ConversationSvc   │ │ OpenAI             │  │
-│  │ /api/agent-  │ │ AgentService      │ │ Anthropic          │  │
-│  │   chat       │ │  (LangGraph ReAct)│ │ Gemini             │  │
-│  │ /api/conv.   │ │ KnowledgeService  │ │ OpenAI-Compatible  │  │
-│  │ /api/models  │ │ EmbeddingService  │ │ (DeepSeek/GLM/Kimi)│  │
-│  │ /api/upload  │ │ FileParser        │ └────────────────────┘  │
-│  │ /api/skills  │ │ LangChainAdapter  │            ▲            │
-│  │ /api/knowl…  │ └───────────────────┘            │ httpx+SSE  │
-│  └──────────────┘                                  │            │
-│  ┌──────────────┐ ┌────────────────────────────────┴──────────┐ │
-│  │ Models (ORM) │ │ Skills (registry)                         │ │
-│  │  + Pydantic  │ │  echo · current_time · web_search (Tavily)│ │
-│  └──────────────┘ │  retrieve_notes (RAG) · MarkdownSkill(.md)│ │
-│  ┌──────────────┐ └──────────────────────────────────────────┘ │
-│  │ SQLite       │  ┌─────────────────────────────────────────┐ │
-│  │  + aiosqlite │  │ ChromaDB (vectors) · bge-small-zh embed │ │
-│  └──────────────┘  └─────────────────────────────────────────┘ │
+│  ┌──────────────┐ ┌───────────────────┐ ┌────────────────────┐   │
+│  │ Routers      │ │ Services          │ │ Adapters           │   │
+│  │ /api/chat    │ │ ConversationSvc   │ │ OpenAI             │   │
+│  │ /api/agent-  │ │ AgentService      │ │ Anthropic          │   │
+│  │   chat       │ │  (LangGraph ReAct)│ │ Gemini             │   │
+│  │ /api/conv.   │ │ KnowledgeService  │ │ OpenAI-Compatible  │   │
+│  │ /api/models  │ │ EmbeddingService  │ │ (DeepSeek/GLM/Kimi)│   │
+│  │ /api/upload  │ │ FileParser        │ └────────────────────┘   │
+│  │ /api/skills  │ │ LangChainAdapter  │            ▲             │
+│  │ /api/knowl…  │ └───────────────────┘            │ httpx+SSE   │
+│  └──────────────┘                                  │             │
+│  ┌──────────────┐ ┌────────────────────────────────┴──────────┐  │
+│  │ Models (ORM) │ │ Skills (registry)                         │  │
+│  │  + Pydantic  │ │  echo · current_time · web_search (Tavily)│  │
+│  └──────────────┘ │  retrieve_notes (RAG) · MarkdownSkill(.md)│  │
+│  ┌──────────────┐ └───────────────────────────────────────────┘  │
+│  │ SQLite       │  ┌──────────────────────────────────────────┐  │
+│  │  + aiosqlite │  │ ChromaDB (vectors) · bge-small-zh embed  │  │
+│  └──────────────┘  └──────────────────────────────────────────┘  │
 └──────────────────────────────────────────────────────────────────┘
              │
              ▼
@@ -89,38 +89,38 @@ An intelligent chat workbench (Kimi Workspace–like) with a decoupled frontend/
 
 ### Frontend
 
-| Category | Tech | Purpose |
-| -------- | ---- | ------- |
-| Framework | React 19 | UI construction |
-| Language | TypeScript | Type safety |
-| Build | Vite | Dev / build tooling |
-| Styling | Tailwind CSS v4 | Utility-first CSS |
-| Components | shadcn/ui | UI primitives (Button, Input, Modal, Select) |
-| State Mgmt | Zustand 5 + persist | Global state + localStorage persistence |
-| Virtual Scroll | @tanstack/react-virtual | Long-list performance |
-| Markdown | react-markdown + remark-gfm | Message rendering |
-| Code Highlight | react-syntax-highlighter | Code block syntax highlighting |
-| File Upload | react-dropzone | Drag-and-drop / click upload |
-| Icons | lucide-react | UI icons |
-| Date | date-fns | Time formatting |
+| Category       | Tech                        | Purpose                                      |
+| -------------- | --------------------------- | -------------------------------------------- |
+| Framework      | React 19                    | UI construction                              |
+| Language       | TypeScript                  | Type safety                                  |
+| Build          | Vite                        | Dev / build tooling                          |
+| Styling        | Tailwind CSS v4             | Utility-first CSS                            |
+| Components     | shadcn/ui                   | UI primitives (Button, Input, Modal, Select) |
+| State Mgmt     | Zustand 5 + persist         | Global state + localStorage persistence      |
+| Virtual Scroll | @tanstack/react-virtual     | Long-list performance                        |
+| Markdown       | react-markdown + remark-gfm | Message rendering                            |
+| Code Highlight | react-syntax-highlighter    | Code block syntax highlighting               |
+| File Upload    | react-dropzone              | Drag-and-drop / click upload                 |
+| Icons          | lucide-react                | UI icons                                     |
+| Date           | date-fns                    | Time formatting                              |
 
 ### Backend
 
-| Category | Tech | Purpose |
-| -------- | ---- | ------- |
-| Framework | FastAPI (≥0.115) | Web server |
-| Runtime | Uvicorn | ASGI server |
-| ORM | SQLAlchemy 2.0 (async) | Database operations |
-| Database | SQLite + aiosqlite | Persistent storage |
-| Validation | Pydantic v2 + pydantic-settings | Request validation + config management |
-| HTTP | httpx | LLM API calls |
-| Agent orchestration | LangGraph + langchain-core | ReAct loop, tool calling |
-| LLM bridge | langchain-text-splitters | Markdown / recursive chunking |
-| Vector DB | chromadb | On-disk vector store |
-| Embeddings | sentence-transformers + `BAAI/bge-small-zh-v1.5` | Local embedding model |
-| Web search | tavily-python | `web_search` skill backend |
-| PDF | pdfplumber | PDF file parsing |
-| DOCX | python-docx | Word file parsing |
+| Category            | Tech                                              | Purpose                                |
+| ------------------- | ------------------------------------------------- | -------------------------------------- |
+| Framework           | FastAPI (≥0.115)                                 | Web server                             |
+| Runtime             | Uvicorn                                           | ASGI server                            |
+| ORM                 | SQLAlchemy 2.0 (async)                            | Database operations                    |
+| Database            | SQLite + aiosqlite                                | Persistent storage                     |
+| Validation          | Pydantic v2 + pydantic-settings                   | Request validation + config management |
+| HTTP                | httpx                                             | LLM API calls                          |
+| Agent orchestration | LangGraph + langchain-core                        | ReAct loop, tool calling               |
+| LLM bridge          | langchain-text-splitters                          | Markdown / recursive chunking          |
+| Vector DB           | chromadb                                          | On-disk vector store                   |
+| Embeddings          | sentence-transformers +`BAAI/bge-small-zh-v1.5` | Local embedding model                  |
+| Web search          | tavily-python                                     | `web_search` skill backend           |
+| PDF                 | pdfplumber                                        | PDF file parsing                       |
+| DOCX                | python-docx                                       | Word file parsing                      |
 
 ---
 
@@ -203,14 +203,14 @@ An intelligent chat workbench (Kimi Workspace–like) with a decoupled frontend/
 
 ### Prerequisites
 
-- Python ≥ 3.11 (recommended: [uv](https://docs.astral.sh/uv/))
-- Node.js ≥ 20
+- Python ≥ 3.11 (recommended: [uv](https://docs.astral.sh/uv/), python 3.13)
+- Node.js ≥ 20 (recommended: Node.js 24)
 
 ### 1. Clone the repository
 
 ```bash
 git clone <repo-url>
-cd My_Agent
+cd Multi-Agent-Workbench
 ```
 
 ### 2. Start the backend
@@ -226,7 +226,7 @@ uv sync
 uv run uvicorn main:app --reload
 ```
 
-The backend runs at **<http://localhost:8000>** · Swagger docs: <http://localhost:8000/docs>
+The backend runs at **[http://localhost:8000](http://localhost:8000)** · Swagger docs: [http://localhost:8000/docs](http://localhost:8000/docs)
 
 > **RAG note**: `uv sync` installs `sentence-transformers` + torch. If you skip them, the backend still boots and `FakeEmbedder` makes RAG a no-op (uploads → 503, retrieval → `[]`).
 
@@ -238,7 +238,7 @@ npm install
 npm run dev
 ```
 
-The frontend runs at **<http://localhost:5173>**, with Vite proxying `/api` → `http://localhost:8000`.
+The frontend runs at **[http://localhost:5173](http://localhost:5173)**, with Vite proxying `/api` → `http://localhost:8000`.
 
 ### Docker (one-click)
 
@@ -246,66 +246,66 @@ The frontend runs at **<http://localhost:5173>**, with Vite proxying `/api` → 
 docker compose up
 ```
 
-Frontend on **<http://localhost>** (port 80), backend proxied via nginx; SSE passthrough enabled (`proxy_buffering off`).
+Frontend on **[http://localhost](http://localhost)** (port 80), backend proxied via nginx; SSE passthrough enabled (`proxy_buffering off`).
 
 ---
 
 ## Configuration (`.env`)
 
-| Variable | Default | Description |
-| -------- | ------- | ----------- |
-| `OPENAI_API_KEY` / `OPENAI_BASE_URL` | — | OpenAI native |
-| `ANTHROPIC_API_KEY` | — | Anthropic native |
-| `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL` | — | DeepSeek (OpenAI-compatible) |
-| `GLM_API_KEY` / `GLM_BASE_URL` | — | GLM / Zhipu (OpenAI-compatible) |
-| `KIMI_API_KEY` / `KIMI_BASE_URL` | — | Kimi / Moonshot (OpenAI-compatible) |
-| `GEMINI_API_KEY` | — | Gemini native |
-| `TAVILY_API_KEY` | — | Tavily web search (free tier available) |
-| `AGENT_MAX_STEPS` | `8` | Agent ReAct max steps |
-| `AGENT_STEP_TEMPERATURE` | `0.7` | Step temperature (placeholder) |
-| `AGENT_FINAL_TEMPERATURE` | `0.4` | Final-answer temperature (placeholder) |
-| `EMBEDDING_MODEL` | `BAAI/bge-small-zh-v1.5` | Local embedding model |
-| `EMBEDDING_DEVICE` | `cpu` | Embedding device (`cpu` / `cuda`) |
-| `CHROMA_PERSIST_DIR` | `.chroma` | ChromaDB index directory (resolved vs. backend root) |
-| `KB_CHUNK_SIZE` / `KB_CHUNK_OVERLAP` | `800` / `100` | Chunking params |
-| `KB_TOP_K` / `KB_MIN_SCORE` | `4` / `0.3` | Retrieval params |
-| `DATABASE_URL` | `sqlite+aiosqlite:///./workbench.db` | Database URL |
+| Variable                                     | Default                                | Description                                          |
+| -------------------------------------------- | -------------------------------------- | ---------------------------------------------------- |
+| `OPENAI_API_KEY` / `OPENAI_BASE_URL`     | —                                     | OpenAI native                                        |
+| `ANTHROPIC_API_KEY`                        | —                                     | Anthropic native                                     |
+| `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL` | —                                     | DeepSeek (OpenAI-compatible)                         |
+| `GLM_API_KEY` / `GLM_BASE_URL`           | —                                     | GLM / Zhipu (OpenAI-compatible)                      |
+| `KIMI_API_KEY` / `KIMI_BASE_URL`         | —                                     | Kimi / Moonshot (OpenAI-compatible)                  |
+| `GEMINI_API_KEY`                           | —                                     | Gemini native                                        |
+| `TAVILY_API_KEY`                           | —                                     | Tavily web search (free tier available)              |
+| `AGENT_MAX_STEPS`                          | `8`                                  | Agent ReAct max steps                                |
+| `AGENT_STEP_TEMPERATURE`                   | `0.7`                                | Step temperature (placeholder)                       |
+| `AGENT_FINAL_TEMPERATURE`                  | `0.4`                                | Final-answer temperature (placeholder)               |
+| `EMBEDDING_MODEL`                          | `BAAI/bge-small-zh-v1.5`             | Local embedding model                                |
+| `EMBEDDING_DEVICE`                         | `cpu`                                | Embedding device (`cpu` / `cuda`)                |
+| `CHROMA_PERSIST_DIR`                       | `.chroma`                            | ChromaDB index directory (resolved vs. backend root) |
+| `KB_CHUNK_SIZE` / `KB_CHUNK_OVERLAP`     | `800` / `100`                      | Chunking params                                      |
+| `KB_TOP_K` / `KB_MIN_SCORE`              | `4` / `0.3`                        | Retrieval params                                     |
+| `DATABASE_URL`                             | `sqlite+aiosqlite:///./workbench.db` | Database URL                                         |
 
 ---
 
 ## API Reference
 
-| Method | Path | Description |
-| ------ | ---- | ----------- |
-| `GET` | `/health` | Health check |
-| `GET` | `/api/conversations?q=` | List conversations (optional search) |
-| `POST` | `/api/conversations` | Create conversation |
-| `GET` | `/api/conversations/{id}` | Get conversation detail (with messages) |
-| `PATCH` | `/api/conversations/{id}` | Rename conversation |
-| `DELETE` | `/api/conversations/{id}` | Delete conversation |
-| `POST` | `/api/chat` | Send message (SSE streaming) |
-| `POST` | `/api/agent-chat` | Agent ReAct chat (SSE streaming) |
-| `POST` | `/api/upload` | Upload file |
-| `GET` | `/api/models` | List active models |
-| `GET` | `/api/models/all` | List all models |
-| `POST` | `/api/models` | Create model |
-| `PUT` | `/api/models/{id}` | Update model |
-| `DELETE` | `/api/models/{id}` | Delete model |
-| `GET` | `/api/skills` | List skills manifest (with `source`) |
-| `POST` | `/api/skills/{name}` | Invoke a skill |
-| `POST` | `/api/skills/reload` | Hot-reload markdown skills |
-| `GET` | `/api/skills/md/{name}` | Get a markdown skill source |
-| `POST` | `/api/skills/md` | Create a markdown skill |
-| `PUT` | `/api/skills/md/{name}` | Update a markdown skill |
-| `DELETE` | `/api/skills/md/{name}` | Delete a markdown skill |
-| `GET` | `/api/knowledge-bases` | List knowledge bases |
-| `POST` | `/api/knowledge-bases` | Create knowledge base |
-| `GET` | `/api/knowledge-bases/{id}` | Get knowledge base |
-| `PATCH` | `/api/knowledge-bases/{id}` | Update knowledge base |
-| `DELETE` | `/api/knowledge-bases/{id}` | Delete knowledge base (+ docs) |
-| `GET` | `/api/knowledge-bases/{id}/documents` | List documents |
-| `POST` | `/api/knowledge-bases/{id}/documents` | Upload document (multipart) |
-| `DELETE` | `/api/knowledge-bases/{id}/documents/{doc_id}` | Delete document |
+| Method     | Path                                             | Description                             |
+| ---------- | ------------------------------------------------ | --------------------------------------- |
+| `GET`    | `/health`                                      | Health check                            |
+| `GET`    | `/api/conversations?q=`                        | List conversations (optional search)    |
+| `POST`   | `/api/conversations`                           | Create conversation                     |
+| `GET`    | `/api/conversations/{id}`                      | Get conversation detail (with messages) |
+| `PATCH`  | `/api/conversations/{id}`                      | Rename conversation                     |
+| `DELETE` | `/api/conversations/{id}`                      | Delete conversation                     |
+| `POST`   | `/api/chat`                                    | Send message (SSE streaming)            |
+| `POST`   | `/api/agent-chat`                              | Agent ReAct chat (SSE streaming)        |
+| `POST`   | `/api/upload`                                  | Upload file                             |
+| `GET`    | `/api/models`                                  | List active models                      |
+| `GET`    | `/api/models/all`                              | List all models                         |
+| `POST`   | `/api/models`                                  | Create model                            |
+| `PUT`    | `/api/models/{id}`                             | Update model                            |
+| `DELETE` | `/api/models/{id}`                             | Delete model                            |
+| `GET`    | `/api/skills`                                  | List skills manifest (with`source`)   |
+| `POST`   | `/api/skills/{name}`                           | Invoke a skill                          |
+| `POST`   | `/api/skills/reload`                           | Hot-reload markdown skills              |
+| `GET`    | `/api/skills/md/{name}`                        | Get a markdown skill source             |
+| `POST`   | `/api/skills/md`                               | Create a markdown skill                 |
+| `PUT`    | `/api/skills/md/{name}`                        | Update a markdown skill                 |
+| `DELETE` | `/api/skills/md/{name}`                        | Delete a markdown skill                 |
+| `GET`    | `/api/knowledge-bases`                         | List knowledge bases                    |
+| `POST`   | `/api/knowledge-bases`                         | Create knowledge base                   |
+| `GET`    | `/api/knowledge-bases/{id}`                    | Get knowledge base                      |
+| `PATCH`  | `/api/knowledge-bases/{id}`                    | Update knowledge base                   |
+| `DELETE` | `/api/knowledge-bases/{id}`                    | Delete knowledge base (+ docs)          |
+| `GET`    | `/api/knowledge-bases/{id}/documents`          | List documents                          |
+| `POST`   | `/api/knowledge-bases/{id}/documents`          | Upload document (multipart)             |
+| `DELETE` | `/api/knowledge-bases/{id}/documents/{doc_id}` | Delete document                         |
 
 ### Streaming Chat Request Body (`POST /api/chat`)
 
@@ -440,14 +440,14 @@ My_Agent/
 
 ## Database Models
 
-| Table | Description | Key Fields |
-| ----- | ----------- | ---------- |
-| `conversations` | Conversations | id, title, created_at, updated_at |
-| `messages` | Messages | id, conversation_id, role, content, thinking, model, status, metadata_ |
-| `uploaded_files` | Uploaded files | id, conversation_id, name, text_content |
-| `model_configs` | Model configs | id, model_id, vendor, name, adapter_type, base_url, api_key, is_active |
-| `knowledge_bases` | Knowledge bases | id, name, description, created_at, updated_at |
-| `knowledge_docs` | KB documents | id, kb_id, filename, sha256, text, created_at |
+| Table               | Description     | Key Fields                                                             |
+| ------------------- | --------------- | ---------------------------------------------------------------------- |
+| `conversations`   | Conversations   | id, title, created_at, updated_at                                      |
+| `messages`        | Messages        | id, conversation_id, role, content, thinking, model, status, metadata_ |
+| `uploaded_files`  | Uploaded files  | id, conversation_id, name, text_content                                |
+| `model_configs`   | Model configs   | id, model_id, vendor, name, adapter_type, base_url, api_key, is_active |
+| `knowledge_bases` | Knowledge bases | id, name, description, created_at, updated_at                          |
+| `knowledge_docs`  | KB documents    | id, kb_id, filename, sha256, text, created_at                          |
 
 Schema changes are applied via lightweight `ALTER TABLE` migrations on startup (no Alembic).
 
@@ -479,19 +479,19 @@ See [DEVELOPMENT_PLAN.md](./DEVELOPMENT_PLAN.md) for the full plan and [PROGRESS
 
 ### Phase Summary
 
-| Phase | Status | Description |
-| ----- | ------ | ----------- |
-| Phase 1 | ✅ Done | Backend framework + database + model adapters + streaming chat API |
-| Phase 2 | ✅ Done | Frontend framework + conversation management + message display + streaming render |
-| Phase 3 | ✅ Done | Deep Thinking end-to-end |
-| Phase 4 | ✅ Done | File upload + model management + virtual scrolling |
-| Cross-platform + deploy | ✅ Done | Docker + GHA 3-platform matrix + perf/hook tests |
-| AgentService Phase 1 | ✅ Done | ReAct multi-step reasoning (no tools) |
-| AgentService Phase 2a | ✅ Done | LangGraph + tool calling (Skills → tools) |
-| AgentService Phase 2b-i | ✅ Done | RAG + knowledge base management |
-| AgentService Phase 2b-ii | ✅ Done | AgentTrace panel + step-bounded SSE |
-| Phase 3 Round 1 | ✅ Done | Markdown skills + web search + interleaved Agent output |
-| Phase 3 Round 2 | ✅ Done | Skills Manager UI + Tavily web search |
+| Phase                    | Status  | Description                                                                       |
+| ------------------------ | ------- | --------------------------------------------------------------------------------- |
+| Phase 1                  | ✅ Done | Backend framework + database + model adapters + streaming chat API                |
+| Phase 2                  | ✅ Done | Frontend framework + conversation management + message display + streaming render |
+| Phase 3                  | ✅ Done | Deep Thinking end-to-end                                                          |
+| Phase 4                  | ✅ Done | File upload + model management + virtual scrolling                                |
+| Cross-platform + deploy  | ✅ Done | Docker + GHA 3-platform matrix + perf/hook tests                                  |
+| AgentService Phase 1     | ✅ Done | ReAct multi-step reasoning (no tools)                                             |
+| AgentService Phase 2a    | ✅ Done | LangGraph + tool calling (Skills → tools)                                        |
+| AgentService Phase 2b-i  | ✅ Done | RAG + knowledge base management                                                   |
+| AgentService Phase 2b-ii | ✅ Done | AgentTrace panel + step-bounded SSE                                               |
+| Phase 3 Round 1          | ✅ Done | Markdown skills + web search + interleaved Agent output                           |
+| Phase 3 Round 2          | ✅ Done | Skills Manager UI + Tavily web search                                             |
 
 ### Planned (Phase 3 Round 3, scope TBD)
 

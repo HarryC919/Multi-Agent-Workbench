@@ -67,7 +67,7 @@
 
 ## 2. 项目结构
 
-```
+```text
 My_Agent/
 ├── Requirement.md
 ├── DEVELOPMENT_PLAN.md      # 本文件
@@ -745,6 +745,7 @@ My_Agent/
 **价值**：从根本上解决 ReAct 文本解析的脆弱性--第一轮/第二轮反复在修"模型伪造 Observation""Action Input 带引号""说明: 格式不遵守"等 prompt 合规问题。原生 tool-calling 让模型直接输出结构化 tool_call，不再依赖文本解析。
 
 **影响面**（大）：
+
 - `AdapterChatModel.bind_tools` 从 `NotImplementedError` 改为真实实现（OpenAI/Anthropic 各自的 `tools` 参数）。
 - `agent_service.py` ReAct 循环替换为 native tool-call 流（或保留 ReAct 作 fallback）。
 - SSE 协议变化：`action`/`observation` 事件改由 tool_call delta 驱动。
@@ -758,6 +759,7 @@ My_Agent/
 **价值**：补齐知识库的实用短板，三件都是中低风险增量。
 
 **影响面**（中）：
+
 - **PDF/DOCX 放开**：`routers/knowledge.py` 上传白名单加 `.pdf/.docx`（`file_parser.py` 已支持解析）；前端 KnowledgeBaseManager `accept` 扩展。低风险。
 - **异步化文档处理**：上传返 `doc_id` + `status=processing`，后台 task 做 chunking/embedding；前端轮询或 SSE 推进度。需引入后台任务机制（`asyncio.create_task` 或轻量队列）。
 - **混合检索 BM25**：`knowledge_service.retrieve` 加 BM25 + 向量 ensemble（`rank_bm25` 库）；score 归一化融合。
