@@ -50,3 +50,6 @@ coverage/
 # Build artifacts
 *.egg-info/
 build/
+
+# Reports
+Report.md
